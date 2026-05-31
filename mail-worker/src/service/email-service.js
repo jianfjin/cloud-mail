@@ -297,7 +297,8 @@ const emailService = {
 
 		//追加用户签名
 		if (userRow.signature) {
-			html += `<div style="margin-top:32px;border-top:1px solid #eee;padding-top:16px;font-size:12px;color:#666;">${userRow.signature}</div>`;
+			const escapeHtml = (str) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+			html += `<div style="margin-top:32px;border-top:1px solid #eee;padding-top:16px;font-size:12px;color:#666;">${escapeHtml(userRow.signature)}</div>`;
 		}
 
 		//封装数据保存到数据库
