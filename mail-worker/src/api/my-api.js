@@ -18,4 +18,17 @@ app.delete('/my/delete', async (c) => {
 	return c.json(result.ok());
 });
 
+app.get('/my/signature', async (c) => {
+	const userId = userContext.getUserId(c);
+	const userRow = await userService.selectById(c, userId);
+	return c.json(result.ok({ signature: userRow.signature || '' }));
+});
+
+app.put('/my/signature', async (c) => {
+	const userId = userContext.getUserId(c);
+	const { signature } = await c.req.json();
+	await userService.setSignature(c, userId, signature || '');
+	return c.json(result.ok());
+});
+
 
