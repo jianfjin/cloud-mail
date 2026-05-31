@@ -295,6 +295,11 @@ const emailService = {
 		//把图片标签cid标签切换会通用url
 		html = this.imgReplace(html, imageDataList, r2Domain);
 
+		//追加用户签名
+		if (userRow.signature) {
+			html += `<div style="margin-top:32px;border-top:1px solid #eee;padding-top:16px;font-size:12px;color:#666;">${userRow.signature}</div>`;
+		}
+
 		//封装数据保存到数据库
 		const emailData = {};
 		emailData.sendEmail = accountRow.email;
