@@ -258,6 +258,12 @@ const emailService = {
 
 		let resendResult = {};
 
+		//追加用户签名
+		if (userRow.signature) {
+			const escapeHtml = (str) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+			html += `<div style="margin-top:32px;border-top:1px solid #eee;padding-top:16px;font-size:12px;color:#666;">${escapeHtml(userRow.signature)}</div>`;
+		}
+
 		//存在站外时邮箱全部由resend发送
 		if (!allInternal) {
 
@@ -294,12 +300,6 @@ const emailService = {
 
 		//把图片标签cid标签切换会通用url
 		html = this.imgReplace(html, imageDataList, r2Domain);
-
-		//追加用户签名
-		if (userRow.signature) {
-			const escapeHtml = (str) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-			html += `<div style="margin-top:32px;border-top:1px solid #eee;padding-top:16px;font-size:12px;color:#666;">${escapeHtml(userRow.signature)}</div>`;
-		}
 
 		//封装数据保存到数据库
 		const emailData = {};
