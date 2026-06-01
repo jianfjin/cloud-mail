@@ -24,6 +24,8 @@ const en = {
     add: 'Add',
     manage: 'Manage',
     rename: 'Rename',
+    signature: 'Signature',
+    editSignature: 'Edit Signature',
     delete: 'Delete',
     save: 'Save',
     profile: 'Profile',
@@ -324,7 +326,8 @@ const en = {
     searchUser: 'Search by user',
     searchEmail: 'Search by Email',
     searchSender: 'Search by Sender',
-    userEmail: 'Email Address'
+    userEmail: 'Email Address',
+    comingSoon: 'Coming soon'
 }
 
 export default en

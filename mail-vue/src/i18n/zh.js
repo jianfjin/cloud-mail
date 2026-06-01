@@ -24,6 +24,8 @@ const zh = {
     add: '添加',
     manage: '管理',
     rename: '改名',
+    signature: '签名',
+    editSignature: '编辑签名',
     delete: '删除',
     save: '保存',
     profile: '个人信息',
@@ -324,6 +326,7 @@ const zh = {
     searchUser: '搜索用户',
     searchEmail: '搜索邮箱',
     searchSender: '搜索发件人',
-    userEmail: '用户邮箱'
+    userEmail: '用户邮箱',
+    comingSoon: '即将推出'
 }
 export default zh
