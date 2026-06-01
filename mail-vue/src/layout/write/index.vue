@@ -7,8 +7,19 @@
             <Icon icon="hugeicons:quill-write-01" width="28" height="28"/>
           </span>
           <span class="sender">{{ $t('sender') }}:</span>
-          <span class="sender-name">{{ form.name }}</span>
-          <span class="send-email"><{{ form.sendEmail }}></span>
+          <el-select
+              class="sender-select"
+              v-model="form.accountId"
+              :aria-label="$t('sender')"
+              @change="changeSender"
+          >
+            <el-option
+                v-for="item in senderOptions"
+                :key="item.accountId"
+                :label="`${item.name || item.email} <${item.email}>`"
+                :value="item.accountId"
+            />
+          </el-select>
         </div>
         <div @click="close" style="cursor: pointer;">
           <Icon icon="material-symbols-light:close-rounded" width="22" height="22"/>
@@ -160,8 +171,38 @@ const form = reactive({
 })
 
 const selectRecipientList = ref([])
+const SIGNATURE_CLASS = 'cloud-mail-auto-signature'
+const signatureState = reactive({
+  accountId: null,
+  insertedSignature: null
+})
 
 const contacts = computed(() => writerStore.sendRecipientRecord.map(item => ({email: item})))
+const senderOptions = computed(() => {
+  const options = []
+  const seen = new Set()
+
+  const addOption = (item) => {
+    if (!item?.accountId || seen.has(item.accountId)) return
+    seen.add(item.accountId)
+    options.push({
+      accountId: item.accountId,
+      email: item.email,
+      name: item.name || item.email,
+      signature: item.signature || null
+    })
+  }
+
+  addOption(userStore.user?.account ? {
+    ...userStore.user.account,
+    email: userStore.user.email,
+    name: userStore.user.name,
+  } : null)
+  accountStore.accounts.forEach(addOption)
+  addOption(accountStore.currentAccount)
+
+  return options
+})
 
 function openContacts() {
   showContacts.value = true
@@ -308,9 +349,7 @@ async function sendEmail() {
     return
   }
 
-  if (!form.content) {
-    form.content = editor.value.getContent();
-  }
+  form.content = stripSignatureMarkers(editor.value.getContent());
 
   if (!form.content) {
     ElMessage({
@@ -412,6 +451,7 @@ function resetForm() {
   form.receiveEmail = []
   form.subject = ''
   form.content = ''
+  defValue.value = ''
   form.manyType = null
   form.attachments = []
   form.sendType = ''
@@ -421,6 +461,7 @@ function resetForm() {
   backReply.subject = ''
   backReply.receiveEmail = []
   backReply.sendType = ''
+  resetSignatureState()
   editor.value.clearEditor()
 }
 
@@ -444,9 +485,9 @@ function openForward(email) {
   defValue.value = ''
 
   setTimeout(() => {
-    defValue.value = `
+    defValue.value = withSignature(`
       ${formatImage(email.content) || `<pre style="font-family: inherit;word-break: break-word;white-space: pre-wrap;margin: 0">${email.text}</pre>`}
-    `
+    `)
     open()
 
     nextTick(() => {
@@ -477,8 +518,7 @@ function openReply(email) {
   defValue.value = ''
 
   setTimeout(() => {
-    defValue.value = `
-    <div></div>
+    defValue.value = withSignature(`
     <div>
     <br>
         ${formatDetailDate(email.createTime)} ${email.name} &lt${email.sendEmail}&gt ${t('wrote')}:
@@ -487,7 +527,7 @@ function openReply(email) {
       <articl>
           ${formatImage(email.content) || `<pre style="font-family: inherit;word-break: break-word;white-space: pre-wrap;margin: 0">${email.text}</pre>`}
       </article>
-    </blockquote>`
+    </blockquote>`)
     open()
 
     nextTick(() => {
@@ -507,14 +547,9 @@ function formatImage(content) {
 }
 
 function open() {
-  if (!accountStore.currentAccount.email) {
-    form.sendEmail = userStore.user.email;
-    form.accountId = userStore.user.account.accountId;
-    form.name = userStore.user.name;
-  } else {
-    form.sendEmail = accountStore.currentAccount.email;
-    form.accountId = accountStore.currentAccount.accountId;
-    form.name = accountStore.currentAccount.name;
+  applySender(getDefaultSender(), false)
+  if (!defValue.value && !form.content) {
+    defValue.value = withSignature('')
   }
   show.value = true;
   editor.value.focus()
@@ -522,6 +557,7 @@ function open() {
 
 function openDraft(draft) {
   Object.assign(form, {...draft})
+  resetSignatureState()
   defValue.value = ''
   setTimeout(() => defValue.value = form.content)
   show.value = true;
@@ -551,6 +587,7 @@ function close() {
   }
 
   if (form.draftId) {
+    form.content = stripSignatureMarkers(form.content);
     draftStore.setDraft = {...toRaw(form)}
     show.value = false
     resetForm()
@@ -583,6 +620,7 @@ function close() {
     type: 'warning',
     distinguishCancelAndClose: true
   }).then(async () => {
+    form.content = stripSignatureMarkers(editor.value.getContent());
     const formData = {...toRaw(form)};
     delete formData.draftId
     delete formData.attachments
@@ -601,6 +639,118 @@ function close() {
     }
   })
 
+}
+
+function getDefaultSender() {
+  if (accountStore.currentAccount?.email) {
+    return accountStore.currentAccount
+  }
+
+  return {
+    ...userStore.user.account,
+    email: userStore.user.email,
+    name: userStore.user.name,
+  }
+}
+
+function findSender(accountId) {
+  return senderOptions.value.find(item => item.accountId === accountId) || getDefaultSender()
+}
+
+function applySender(account, updateSignature = true) {
+  form.sendEmail = account.email;
+  form.accountId = account.accountId;
+  form.name = account.name || account.email;
+
+  if (updateSignature) {
+    replaceSignature(account)
+  }
+}
+
+function normalizeSignature(signature) {
+  return signature?.trim() || null
+}
+
+function resetSignatureState() {
+  signatureState.accountId = null
+  signatureState.insertedSignature = null
+}
+
+function buildSignatureBlock(signature) {
+  return `<div class="${SIGNATURE_CLASS}">${signature}</div>`
+}
+
+function getDocumentBody(html) {
+  const doc = new DOMParser().parseFromString(`<body>${html || ''}</body>`, 'text/html')
+  return doc.body
+}
+
+function getSignatureNode(body) {
+  return body.querySelector(`.${SIGNATURE_CLASS}`)
+}
+
+function stripSignatureMarkers(html) {
+  const body = getDocumentBody(html)
+  body.querySelectorAll(`.${SIGNATURE_CLASS}`).forEach(node => {
+    node.classList.remove(SIGNATURE_CLASS)
+    if (!node.getAttribute('class')) {
+      node.removeAttribute('class')
+    }
+  })
+  return body.innerHTML
+}
+
+function withSignature(content) {
+  const signature = normalizeSignature(findSender(form.accountId)?.signature || getDefaultSender()?.signature)
+
+  if (!signature) {
+    resetSignatureState()
+    return content
+  }
+
+  signatureState.accountId = form.accountId
+  signatureState.insertedSignature = signature
+  return `<div><br></div>${buildSignatureBlock(signature)}${content || ''}`
+}
+
+function replaceSignature(account) {
+  const nextSignature = normalizeSignature(account.signature)
+  const currentContent = editor.value?.getContent?.() || form.content || ''
+  const body = getDocumentBody(currentContent)
+  const signatureNode = getSignatureNode(body)
+
+  if (!signatureState.insertedSignature || !signatureNode) {
+    if (!nextSignature) return
+    const nextContent = `<div><br></div>${buildSignatureBlock(nextSignature)}${stripSignatureMarkers(currentContent)}`
+    setEditorContent(nextContent)
+    signatureState.accountId = account.accountId
+    signatureState.insertedSignature = nextSignature
+    return
+  }
+
+  if (normalizeSignature(signatureNode.innerHTML) !== signatureState.insertedSignature) {
+    return
+  }
+
+  if (nextSignature) {
+    signatureNode.innerHTML = nextSignature
+  } else {
+    signatureNode.remove()
+  }
+
+  setEditorContent(body.innerHTML)
+  signatureState.accountId = account.accountId
+  signatureState.insertedSignature = nextSignature
+}
+
+function setEditorContent(content) {
+  form.content = content
+  defValue.value = content
+  editor.value?.setContent?.(content)
+}
+
+function changeSender(accountId) {
+  applySender(findSender(accountId), true)
 }
 
 </script>
@@ -658,7 +808,7 @@ function close() {
       .title-left {
         align-items: center;
         display: grid;
-        grid-template-columns: auto auto auto 1fr;
+        grid-template-columns: auto auto minmax(180px, 420px);
       }
 
       .title-text {
@@ -668,17 +818,9 @@ function close() {
         margin-left: 8px;
       }
 
-      .sender-name {
+      .sender-select {
         margin-left: 8px;
-        font-weight: bold;
-      }
-
-      .send-email {
-        color: #999896;
-        margin-left: 5px;
-        white-space: nowrap;
-        text-overflow: ellipsis;
-        overflow: hidden;
+        min-width: 0;
       }
 
 

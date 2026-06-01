@@ -6,6 +6,7 @@ export const account = sqliteTable('account', {
 	name: text('name').notNull().default(''),
 	status: integer('status').default(0).notNull(),
 	latestEmailTime: text('latest_email_time'),
+	signature: text('signature'),
 	createTime: text('create_time').default(sql`CURRENT_TIMESTAMP`),
 	userId: integer('user_id').notNull(),
 	allReceive: integer('all_receive').default(0).notNull(),

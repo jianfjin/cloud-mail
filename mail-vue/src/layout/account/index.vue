@@ -25,6 +25,7 @@
                 <template #dropdown>
                   <el-dropdown-menu>
                     <el-dropdown-item v-if="hasPerm('email:send')" @click="openSetName(item)">{{ $t('rename') }}</el-dropdown-item>
+                    <el-dropdown-item v-if="hasPerm('email:send')" @click="openSignature(item)">{{ $t('signature') }}</el-dropdown-item>
                     <el-dropdown-item v-if="item.accountId !== userStore.user.account.accountId" @click="setAsTop(item, index)">{{ $t('pin') }}</el-dropdown-item>
                     <el-dropdown-item v-if="item.accountId !== userStore.user.account.accountId && hasPerm('account:delete')"
                                       @click="remove(item)">{{ $t('delete') }}
@@ -123,6 +124,25 @@
         </el-button>
       </div>
     </el-dialog>
+    <el-dialog
+        v-model="signatureShow"
+        :title="$t('editSignature')"
+        class="signature-dialog"
+        @closed="closeSignature"
+    >
+      <div class="signature-editor">
+        <tiny-editor
+            ref="signatureEditor"
+            editor-id="account-signature-editor"
+            :def-value="signatureValue"
+            @change="signatureChange"
+        />
+      </div>
+      <div class="signature-actions">
+        <el-button @click="signatureShow = false" :disabled="signatureLoading">{{ $t('cancel') }}</el-button>
+        <el-button type="primary" @click="saveSignature" :loading="signatureLoading">{{ $t('save') }}</el-button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 <script setup>
@@ -133,6 +153,7 @@ import {
   accountAdd,
   accountDelete,
   accountSetName,
+  accountSetSignature,
   accountSetAllReceive,
   accountSetAsTop
 } from "@/request/account.js";
@@ -145,6 +166,7 @@ import {useUserStore} from "@/store/user.js";
 import {hasPerm} from "@/perm/perm.js"
 import {useI18n} from "vue-i18n";
 import {AccountAllReceiveEnum} from "@/enums/account-enum.js";
+import tinyEditor from "@/components/tiny-editor/index.vue";
 
 const {t} = useI18n();
 const userStore = useUserStore();
@@ -161,10 +183,15 @@ const followLoading = ref(false);
 const verifyShow = ref(false)
 const setNameShow = ref(false)
 const setNameLoading = ref(false)
+const signatureShow = ref(false)
+const signatureLoading = ref(false)
+const signatureValue = ref('')
+const signatureEditor = ref({})
 const accountName = ref(null)
 const addRef = ref({})
 const scrollbarRef = ref({})
 let account = null
+let signatureAccount = null
 let turnstileId = null
 const botJsError = ref(false)
 let verifyToken = ''
@@ -264,6 +291,49 @@ function openSetName(accountItem) {
   setNameShow.value = true
 }
 
+function openSignature(accountItem) {
+  signatureAccount = accountItem
+  signatureValue.value = accountItem.signature || ''
+  signatureShow.value = true
+  nextTick(() => {
+    signatureEditor.value?.focus?.()
+  })
+}
+
+function signatureChange(content) {
+  signatureValue.value = content
+}
+
+function closeSignature() {
+  signatureAccount = null
+  signatureValue.value = ''
+}
+
+function saveSignature() {
+  if (!signatureAccount) return
+
+  const nextSignature = signatureEditor.value?.getContent?.() ?? signatureValue.value
+  signatureLoading.value = true
+
+  accountSetSignature(signatureAccount.accountId, nextSignature).then((signature) => {
+    signatureAccount.signature = signature
+    if (accountStore.currentAccountId === signatureAccount.accountId) {
+      accountStore.currentAccount.signature = signatureAccount.signature
+    }
+    if (userStore.user?.account?.accountId === signatureAccount.accountId) {
+      userStore.user.account.signature = signatureAccount.signature
+    }
+    signatureShow.value = false
+    ElMessage({
+      message: t('saveSuccessMsg'),
+      type: "success",
+      plain: true
+    })
+  }).finally(() => {
+    signatureLoading.value = false
+  })
+}
+
 function setAllReceive(account) {
   let allReceiveAccount = accounts.find(account => account.allReceive === AccountAllReceiveEnum.ENABLED);
   if (allReceiveAccount && allReceiveAccount.accountId !== account.accountId) allReceiveAccount.allReceive = AccountAllReceiveEnum.DISABLED;
@@ -329,6 +399,7 @@ function refresh() {
   getSkeletonRows();
   scrollbarRef.value.setScrollTop(0)
   accounts.splice(0, accounts.length)
+  accountStore.accounts = []
   getAccountList()
 }
 
@@ -407,6 +478,7 @@ function getAccountList() {
     }
 
     accounts.push(...list)
+    accountStore.accounts = [...accounts]
 
     loading.value = false
     followLoading.value = false
@@ -638,6 +710,28 @@ path[fill="#ffdda1"] {
     margin-right: 20px !important;
     margin-left: 20px !important;
   }
+}
+
+:deep(.signature-dialog) {
+  width: min(720px, calc(100% - 40px)) !important;
+}
+
+.signature-editor {
+  height: 320px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 6px;
+  overflow: hidden;
+
+  @media (max-width: 767px) {
+    height: 260px;
+  }
+}
+
+.signature-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 15px;
 }
 
 .select {

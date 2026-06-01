@@ -12,6 +12,7 @@ import turnstileService from './turnstile-service';
 import roleService from './role-service';
 import { t } from '../i18n/i18n';
 import verifyRecordService from './verify-record-service';
+import { sanitizeRichText } from '../utils/html-sanitize-utils';
 
 const accountService = {
 
@@ -217,6 +218,13 @@ const accountService = {
 		await orm(c).update(account).set({name}).where(and(eq(account.userId, userId),eq(account.accountId, accountId))).run();
 	},
 
+	async setSignature(c, params, userId) {
+		const { accountId, signature } = params;
+		const sanitizedSignature = sanitizeRichText(signature);
+		await orm(c).update(account).set({ signature: sanitizedSignature }).where(and(eq(account.userId, userId), eq(account.accountId, accountId))).run();
+		return sanitizedSignature;
+	},
+
 	async allAccount(c, params) {
 
 		let { userId, num, size } = params
@@ -234,7 +242,18 @@ const accountService = {
 
 		const userRow = await userService.selectByIdIncludeDel(c, userId);
 
-		const list = await orm(c).select().from(account).where(and(eq(account.userId, userId),ne(account.email,userRow.email))).limit(size).offset(num);
+		const list = await orm(c).select({
+			accountId: account.accountId,
+			email: account.email,
+			name: account.name,
+			status: account.status,
+			latestEmailTime: account.latestEmailTime,
+			createTime: account.createTime,
+			userId: account.userId,
+			allReceive: account.allReceive,
+			sort: account.sort,
+			isDel: account.isDel,
+		}).from(account).where(and(eq(account.userId, userId),ne(account.email,userRow.email))).limit(size).offset(num);
 		const { total } = await orm(c).select({ total: count() }).from(account).where(eq(account.userId, userId)).get();
 
 		return { list, total }
