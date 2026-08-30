@@ -30,39 +30,18 @@
         </div>
       </div>
     </div>
-
-    <!-- Accounts Section -->
-    <div class="container" v-perm="'account:query'">
-      <div class="title account-title">
-        <span>{{$t('account')}}</span>
-        <Icon v-perm="'account:add'" class="icon add" icon="ion:add-outline" width="23" height="23" @click="addAccount"/>
-      </div>
-      <div v-if="accountsLoading" class="loading-accounts">
-        <el-skeleton :rows="3" animated />
-      </div>
-      <div v-else-if="accounts.length === 0" class="empty-accounts">
-        {{$t('noMessagesFound')}}
-      </div>
-      <div v-else class="account-list">
-        <div class="account-item" v-for="item in accounts" :key="item.accountId">
-          <div class="account-email">
-            <span>{{ item.email }}</span>
-            <span v-if="item.name" class="account-name">({{ item.name }})</span>
-          </div>
-          <div class="account-actions">
-            <el-button size="small" text @click="openRename(item)">{{$t('rename')}}</el-button>
-            <el-button size="small" text @click="openSignature(item)">{{$t('signature')}}</el-button>
-            <el-button v-if="item.accountId !== userStore.user.account.accountId" size="small" text @click="pinAccount(item)">
-              <Icon icon="fluent:pin-24-regular" width="16" height="16"/>
-            </el-button>
-            <el-button v-if="item.accountId !== userStore.user.account.accountId && hasPerm('account:delete')" size="small" text type="danger" @click="removeAccount(item)">
-              {{$t('delete')}}
-            </el-button>
-          </div>
-        </div>
-      </div>
+    <div class="language">
+      <div class="title">{{$t('language')}}</div>
+      <el-select
+          :model-value="langSelect"
+          class="language-select"
+          placeholder="Select"
+          @change="changeLang"
+      >
+        <el-option label="中文" value="zh" @pointerdown.prevent.stop="changeLang('zh')"/>
+        <el-option label="English" value="en" @pointerdown.prevent.stop="changeLang('en')"/>
+      </el-select>
     </div>
-
     <div class="del-email" v-perm="'my:delete'">
       <div class="title">{{$t('deleteUser')}}</div>
       <div style="color: var(--regular-text-color);">
@@ -72,103 +51,37 @@
         <el-button type="primary" @click="deleteConfirm">{{$t('deleteUserBtn')}}</el-button>
       </div>
     </div>
-
-    <!-- Rename Dialog -->
-    <el-dialog v-model="renameShow" :title="$t('changeUserName')" width="340">
-      <div class="container">
-        <el-input v-model="renameValue" type="text" :placeholder="$t('username')" autocomplete="off">
-        </el-input>
-        <el-button class="btn" type="primary" @click="saveRename" :loading="renameLoading"
-        >{{$t('save')}}
-        </el-button>
-      </div>
-    </el-dialog>
-
-    <!-- Signature Dialog -->
-    <el-dialog
-        v-model="signatureShow"
-        :title="$t('editSignature')"
-        class="signature-dialog"
-        @closed="closeSignature"
-        width="680px"
-    >
-      <div class="signature-editor">
-        <tiny-editor
-            ref="signatureEditor"
-            editor-id="settings-signature-editor"
-            :def-value="signatureValue"
-            @change="onSignatureChange"
-        />
-      </div>
-      <div class="signature-actions">
-        <el-button @click="signatureShow = false" :disabled="signatureLoading">{{$t('cancel')}}</el-button>
-        <el-button type="primary" @click="saveSignature" :loading="signatureLoading">{{$t('save')}}</el-button>
-      </div>
-    </el-dialog>
-
-    <!-- Password Dialog -->
     <el-dialog v-model="pwdShow" :title="$t('changePassword')" width="340">
       <div class="update-pwd">
-        <el-input type="password" :placeholder="$t('newPassword')" v-model="form.password" autocomplete="off"/>
-        <el-input type="password" :placeholder="$t('confirmPassword')" v-model="form.newPwd" autocomplete="off"/>
+        <el-input type="password" :placeholder="$t('newPassword')" v-model="form.password" autocomplete="off" @keyup.enter="submitPwd"/>
+        <el-input type="password" :placeholder="$t('confirmPassword')" v-model="form.newPwd" autocomplete="off" @keyup.enter="submitPwd"/>
         <el-button type="primary" :loading="setPwdLoading" @click="submitPwd">{{$t('save')}}</el-button>
       </div>
     </el-dialog>
   </div>
 </template>
 <script setup>
-import {reactive, ref, onMounted} from 'vue'
+import {reactive, ref, defineOptions} from 'vue'
 import {resetPassword, userDelete} from "@/request/my.js";
-import {accountList, accountSetName, accountSetSignature, accountSetAsTop, accountDelete} from "@/request/account.js";
 import {useUserStore} from "@/store/user.js";
 import router from "@/router/index.js";
+import {accountSetName} from "@/request/account.js";
 import {useAccountStore} from "@/store/account.js";
 import {useI18n} from "vue-i18n";
-import {hasPerm} from "@/perm/perm.js"
-import {Icon} from "@iconify/vue";
-import tinyEditor from "@/components/tiny-editor/index.vue";
+import {useSettingStore} from "@/store/setting.js";
 
 const { t } = useI18n()
 const accountStore = useAccountStore()
+const settingStore = useSettingStore()
 const userStore = useUserStore();
 const setPwdLoading = ref(false)
 const setNameShow = ref(false)
 const accountName = ref(null)
-
-const accounts = ref([])
-const accountsLoading = ref(false)
-
-// Rename
-const renameShow = ref(false)
-const renameLoading = ref(false)
-const renameValue = ref('')
-let renameAccount = null
-
-// Signature
-const signatureShow = ref(false)
-const signatureLoading = ref(false)
-const signatureValue = ref('')
-const signatureEditor = ref({})
-let signatureAccount = null
+const langSelect = ref(settingStore.lang)
 
 defineOptions({
   name: 'setting'
 })
-
-onMounted(() => {
-  if (hasPerm('account:query')) {
-    loadAccounts()
-  }
-})
-
-function loadAccounts() {
-  accountsLoading.value = true
-  accountList(0, 100, null).then(list => {
-    accounts.value = list
-  }).finally(() => {
-    accountsLoading.value = false
-  })
-}
 
 function showSetName() {
   accountName.value = userStore.user.name
@@ -176,6 +89,7 @@ function showSetName() {
 }
 
 function setName() {
+
   if (!accountName.value) {
     ElMessage({
       message: t('emptyUserNameMsg'),
@@ -184,22 +98,39 @@ function setName() {
     })
     return;
   }
+
   setNameShow.value = false
   let name = accountName.value
+
   if (name === userStore.user.name) {
     return
   }
+
   userStore.user.name = accountName.value
+
   accountSetName(userStore.user.account.accountId,name).then(() => {
     ElMessage({
       message: t('saveSuccessMsg'),
       type: 'success',
       plain: true,
     })
+
     accountStore.changeUserAccountName = name
+
   }).catch(() => {
     userStore.user.name = name
   })
+}
+
+function changeLang(lang) {
+  let setting = {}
+  try {
+    setting = JSON.parse(localStorage.getItem('setting') || '{}')
+  } catch (e) {
+    setting = {}
+  }
+  localStorage.setItem('setting', JSON.stringify({...setting, lang}))
+  window.location.reload()
 }
 
 const pwdShow = ref(false)
@@ -226,7 +157,11 @@ const deleteConfirm = () => {
   })
 }
 
+
 function submitPwd() {
+
+  if (setPwdLoading.value) return
+
   if (!form.password) {
     ElMessage({
       message: t('emptyPwdMsg'),
@@ -235,6 +170,7 @@ function submitPwd() {
     })
     return
   }
+
   if (form.password.length < 6) {
     ElMessage({
       message: t('pwdLengthMsg'),
@@ -243,6 +179,7 @@ function submitPwd() {
     })
     return
   }
+
   if (form.password !== form.newPwd) {
     ElMessage({
       message: t('confirmPwdFailMsg'),
@@ -251,6 +188,7 @@ function submitPwd() {
     })
     return
   }
+
   setPwdLoading.value = true
   resetPassword(form.password).then(() => {
     ElMessage({
@@ -265,118 +203,9 @@ function submitPwd() {
   }).catch(() => {
     setPwdLoading.value = false
   })
+
 }
 
-// --- Account management ---
-function openRename(accountItem) {
-  renameAccount = accountItem
-  renameValue.value = accountItem.name || ''
-  renameShow.value = true
-}
-
-function saveRename() {
-  if (!renameAccount) return
-  const name = renameValue.value
-  if (!name) {
-    ElMessage({
-      message: t('emptyUserNameMsg'),
-      type: 'error',
-      plain: true,
-    })
-    return
-  }
-  renameLoading.value = true
-  accountSetName(renameAccount.accountId, name).then(() => {
-    renameAccount.name = name
-    renameShow.value = false
-    if (renameAccount.accountId === userStore.user.account.accountId) {
-      userStore.user.name = name
-      accountStore.changeUserAccountName = name
-    }
-    ElMessage({
-      message: t('saveSuccessMsg'),
-      type: 'success',
-      plain: true,
-    })
-  }).finally(() => {
-    renameLoading.value = false
-  })
-}
-
-function openSignature(accountItem) {
-  signatureAccount = accountItem
-  signatureValue.value = accountItem.signature || ''
-  signatureShow.value = true
-}
-
-function onSignatureChange(content) {
-  signatureValue.value = content
-}
-
-function closeSignature() {
-  signatureAccount = null
-  signatureValue.value = ''
-}
-
-function saveSignature() {
-  if (!signatureAccount) return
-  const nextSignature = signatureEditor.value?.getContent?.() ?? signatureValue.value
-  signatureLoading.value = true
-  accountSetSignature(signatureAccount.accountId, nextSignature).then((signature) => {
-    signatureAccount.signature = signature
-    if (accountStore.currentAccountId === signatureAccount.accountId) {
-      accountStore.currentAccount.signature = signatureAccount.signature
-    }
-    if (userStore.user?.account?.accountId === signatureAccount.accountId) {
-      userStore.user.account.signature = signatureAccount.signature
-    }
-    signatureShow.value = false
-    ElMessage({
-      message: t('saveSuccessMsg'),
-      type: 'success',
-      plain: true,
-    })
-  }).finally(() => {
-    signatureLoading.value = false
-  })
-}
-
-function pinAccount(item) {
-  accountSetAsTop(item.accountId).then(() => {
-    ElMessage({
-      message: t('setSuccess'),
-      type: 'success',
-      plain: true,
-    })
-    loadAccounts()
-  })
-}
-
-function removeAccount(item) {
-  ElMessageBox.confirm(t('delConfirm', {msg: item.email}), {
-    confirmButtonText: t('confirm'),
-    cancelButtonText: t('cancel'),
-    type: 'warning'
-  }).then(() => {
-    accountDelete(item.accountId).then(() => {
-      const idx = accounts.value.findIndex(a => a.accountId === item.accountId)
-      if (idx !== -1) accounts.value.splice(idx, 1)
-      ElMessage({
-        message: t('delSuccessMsg'),
-        type: 'success',
-        plain: true,
-      })
-    })
-  })
-}
-
-function addAccount() {
-  ElMessage({
-    message: t('comingSoon'),
-    type: 'info',
-    plain: true,
-  })
-}
 </script>
 <style scoped lang="scss">
 .box {
@@ -448,64 +277,14 @@ function addAccount() {
     }
   }
 
-  .account-title {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    .icon {
-      cursor: pointer;
-      color: var(--el-color-primary);
-    }
-  }
-
-  .loading-accounts {
-    padding: 10px 0;
-  }
-
-  .empty-accounts {
-    color: var(--regular-text-color);
-    padding: 10px 0;
-    text-align: center;
-  }
-
-  .account-list {
+  .language {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 20px;
+    margin-bottom: 40px;
 
-    .account-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 10px 12px;
-      border: 1px solid var(--el-border-color-light);
-      border-radius: 8px;
-      background: var(--el-fill-color-lighter);
-      transition: background 0.2s;
-
-      &:hover {
-        background: var(--el-fill-color-light);
-      }
-
-      .account-email {
-        font-size: 14px;
-        overflow: hidden;
-        white-space: nowrap;
-        text-overflow: ellipsis;
-
-        .account-name {
-          color: var(--el-text-color-secondary);
-          margin-left: 6px;
-          font-size: 12px;
-        }
-      }
-
-      .account-actions {
-        display: flex;
-        gap: 4px;
-        flex-shrink: 0;
-        align-items: center;
-      }
+    .language-select {
+      width: 100px;
     }
   }
 
@@ -515,16 +294,5 @@ function addAccount() {
     flex-direction: column;
     gap: 20px;
   }
-}
-
-.signature-editor {
-  height: 380px;
-}
-
-.signature-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 16px;
 }
 </style>
