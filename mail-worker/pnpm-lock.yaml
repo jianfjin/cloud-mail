@@ -26,6 +26,9 @@ importers:
       i18next:
         specifier: ^25.3.2
         version: 25.4.2
+      ical.js:
+        specifier: 2.2.1
+        version: 2.2.1
       linkedom:
         specifier: ^0.18.10
         version: 0.18.12
@@ -2029,6 +2032,9 @@ packages:
     peerDependenciesMeta:
       typescript:
         optional: true
+
+  ical.js@2.2.1:
+    resolution: {integrity: sha512-yK/UlPbEs316igb/tjRgbFA8ZV75rCsBJp/hWOatpyaPNlgw0dGDmU+FoicOcwX4xXkeXOkYiOmCqNPFpNPkQg==}
 
   is-arrayish@0.3.2:
     resolution: {integrity: sha512-eVRqCvVlZbuw3GrM63ovNSNAeA1K16kaR/LRY/92w0zxQ5/1YzwblUX652i4Xs9RwAGjW9d9y6X88t8OaAJfWQ==}
@@ -4508,6 +4514,8 @@ snapshots:
   i18next@25.4.2:
     dependencies:
       '@babel/runtime': 7.28.3
+
+  ical.js@2.2.1: {}
 
   is-arrayish@0.3.2: {}
 
