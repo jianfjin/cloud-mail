@@ -34,7 +34,14 @@
             <el-alert v-if="email.status === 4" :closable="false" :title="$t('complained')" class="email-msg" type="warning" show-icon />
             <el-alert v-if="email.status === 5" :closable="false" :title="$t('delayed')" class="email-msg" type="warning" show-icon />
           </div>
-          <el-scrollbar class="htm-scrollbar" :class="!email.attList?.length ? 'bottom-distance' : ''">
+          <CalendarInvitation
+            v-if="showCalendarPreview"
+            :key="email.emailId"
+            :envelope="calendarEntry?.envelope"
+            :request-state="calendarRequestState"
+            @retry="retryCalendarPreview"
+          />
+          <el-scrollbar v-if="email.content || email.text" class="htm-scrollbar" :class="!email.attList?.length ? 'bottom-distance' : ''">
             <ShadowHtml class="shadow-html" :html="formatImage(email.content)" v-if="email.content" />
             <pre v-else class="email-text" >{{email.text}}</pre>
           </el-scrollbar>
@@ -75,6 +82,7 @@
 </template>
 <script setup>
 import ShadowHtml from '@/components/shadow-html/index.vue'
+import CalendarInvitation from '@/components/calendar-invitation/index.vue'
 import {computed, reactive, ref, watch, onMounted, onUnmounted} from "vue";
 import {useRouter} from 'vue-router'
 import {ElMessage, ElMessageBox} from 'element-plus'
@@ -107,6 +115,33 @@ const email = computed(() => emailStore.contentData.email || {
 })
 const showPreview = ref(false)
 const srcList = reactive([])
+const calendarEntry = computed(() => emailStore.calendarPreviewMap[email.value?.emailId] || null)
+const calendarCandidate = computed(() => {
+  if (!email.value?.emailId) return false
+  if (Number(email.value.hasCalendar) === 1) return true
+  return email.value.attList?.some(attachment => {
+    const mimeType = String(attachment?.mimeType || attachment?.contentType || '')
+      .split(';', 1)[0]
+      .trim()
+      .toLowerCase()
+    return mimeType === 'text/calendar' || mimeType === 'application/ics'
+  }) || false
+})
+const showCalendarPreview = computed(() => calendarCandidate.value || Boolean(calendarEntry.value))
+const calendarRequestState = computed(() => calendarEntry.value?.status || 'loading')
+
+watch(
+  () => [email.value?.emailId, calendarCandidate.value],
+  ([emailId, candidate]) => {
+    if (!emailId || !candidate) return
+    emailStore.fetchCalendarPreview({emailId})
+  },
+  {immediate: true},
+)
+
+function retryCalendarPreview() {
+  if (email.value?.emailId) emailStore.fetchCalendarPreview({emailId: email.value.emailId})
+}
 
 const { t } = useI18n()
 watch(() => accountStore.currentAccountId, () => {

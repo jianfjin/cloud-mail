@@ -56,6 +56,10 @@ export default defineConfig(({mode}) => {
             outDir: env.VITE_OUT_DIR || 'dist',
             emptyOutDir: true,
             assetsInclude: ['**/*.json']
+        },
+        test: {
+            environment: 'jsdom',
+            include: ['src/**/*.spec.js'],
         }
     }
 })
