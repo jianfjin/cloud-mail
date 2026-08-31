@@ -17,8 +17,9 @@ const kvObjService = {
 		await Promise.all(keys.map( key => c.env.kv.delete(key)));
 	},
 
-	async getObj(c, key) {
-		const obj = await c.env.kv.getWithMetadata(key, { type: "arrayBuffer"});
+	async getObj(c, key, options = {}) {
+		const type = options.maxBytes ? 'stream' : 'arrayBuffer';
+		const obj = await c.env.kv.getWithMetadata(key, { type });
 		if (!obj.value) {
 			return null;
 		}

@@ -75,12 +75,13 @@ const s3Service = {
 		);
 	},
 
-	async getObj(c, key) {
+	async getObj(c, key, options = {}) {
 		const client = await this.client(c);
 		const { bucket } = await settingService.query(c);
 		const result = await client.send(new GetObjectCommand({
 			Bucket: bucket,
-			Key: key
+			Key: key,
+			...(options.maxBytes ? { Range: `bytes=0-${options.maxBytes - 1}` } : {}),
 		}));
 
 		return new Response(result.Body, {

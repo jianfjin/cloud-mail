@@ -1,6 +1,6 @@
 import orm from '../entity/orm';
 import { att } from '../entity/att';
-import { and, eq, isNull, inArray, desc } from 'drizzle-orm';
+import { and, eq, isNull, inArray, desc, asc, or, sql } from 'drizzle-orm';
 import r2Service from './r2-service';
 import constant from '../const/constant';
 import fileUtils from '../utils/file-utils';
@@ -45,6 +45,25 @@ const attService = {
 				isNull(att.contentId)
 			)
 		).all();
+	},
+
+	calendarParts(c, emailId, userId) {
+		return orm(c).select({
+			key: att.key,
+			filename: att.filename,
+			mimeType: att.mimeType,
+			size: att.size,
+			method: att.calendarMethod,
+		}).from(att).where(and(
+			eq(att.emailId, emailId),
+			eq(att.userId, userId),
+			eq(att.type, attConst.type.ATT),
+			isNull(att.contentId),
+			or(
+				sql`lower(${att.mimeType}) = 'text/calendar'`,
+				sql`lower(${att.mimeType}) = 'application/ics'`,
+			),
+		)).orderBy(asc(att.attId)).all();
 	},
 
 	async toImageUrlHtml(c, content) {

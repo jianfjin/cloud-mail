@@ -1,5 +1,8 @@
 import { defineStore } from 'pinia'
 import { EmailUnreadEnum } from '@/enums/email-enum.js'
+import { emailCalendarPreview } from '@/request/email.js'
+
+const calendarPreviewRequests = new Map()
 
 export const useEmailStore = defineStore('email', {
     state: () => ({
@@ -17,6 +20,7 @@ export const useEmailStore = defineStore('email', {
         },
         sendScroll: null,
         detailMap: {},
+        calendarPreviewMap: {},
     }),
     persist: {
         pick: ['contentData'],
@@ -72,6 +76,32 @@ export const useEmailStore = defineStore('email', {
                 const item = list.find(e => e.emailId === emailId)
                 if (item) item.unread = EmailUnreadEnum.READ
             }
+        },
+        fetchCalendarPreview(email) {
+            const emailId = Number(email?.emailId)
+            if (!emailId) return Promise.resolve(null)
+            const existing = this.calendarPreviewMap[emailId]
+            if (existing?.status === 'success' || existing?.status === 'terminal') {
+                return Promise.resolve(existing.envelope)
+            }
+            if (calendarPreviewRequests.has(emailId)) return calendarPreviewRequests.get(emailId)
+
+            this.calendarPreviewMap[emailId] = {status: 'loading', envelope: existing?.envelope || null}
+            const request = emailCalendarPreview(emailId).then(envelope => {
+                this.calendarPreviewMap[emailId] = {status: 'success', envelope}
+                return envelope
+            }).catch(error => {
+                const status = error?.response?.status
+                this.calendarPreviewMap[emailId] = {
+                    status: status === undefined || status === 429 || status >= 500 ? 'retryable' : 'terminal',
+                    envelope: null,
+                }
+                return null
+            }).finally(() => {
+                calendarPreviewRequests.delete(emailId)
+            })
+            calendarPreviewRequests.set(emailId, request)
+            return request
         },
     },
 })

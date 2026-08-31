@@ -93,6 +93,9 @@ const premKey = {
 app.use('*', async (c, next) => {
 
 	const path = c.req.path;
+	if (path === '/email/calendar-preview') {
+		c.header('Cache-Control', 'private, no-store');
+	}
 
 	const index = exclude.findIndex(item => {
 		return path.startsWith(item);

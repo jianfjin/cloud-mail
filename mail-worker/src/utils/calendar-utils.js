@@ -564,6 +564,30 @@ function failedEnvelope(code, state = 'failed') {
 	return envelope;
 }
 
+export function createCalendarFallback(code, state = 'failed') {
+	return failedEnvelope(code, state);
+}
+
+function parseCurrentEnvelope(value) {
+	if (typeof value === 'string' && textEncoder.encode(value).byteLength > CALENDAR_LIMITS.envelopeBytes) return null;
+	const envelope = typeof value === 'string' ? JSON.parse(value) : value;
+	if (!envelope || envelope.schemaVersion !== CALENDAR_SCHEMA_VERSION || envelope.parserVersion !== CALENDAR_PARSER_VERSION) return null;
+	if (!['parsed', 'partial', 'unsupported', 'failed'].includes(envelope.state)
+		|| !Array.isArray(envelope.sources)
+		|| !Array.isArray(envelope.events)
+		|| !Array.isArray(envelope.warnings)
+		|| serializedBytes(envelope) > CALENDAR_LIMITS.envelopeBytes) return null;
+	return envelope;
+}
+
+export function isCurrentCalendarEnvelope(value) {
+	try {
+		return Boolean(parseCurrentEnvelope(value));
+	} catch (_) {
+		return false;
+	}
+}
+
 export async function normalizeCalendarAttachments(attachments) {
 	try {
 		const input = Array.isArray(attachments) ? attachments : [];
@@ -629,21 +653,7 @@ export async function normalizeCalendarAttachments(attachments) {
 
 export function decodeCalendarEnvelope(value) {
 	try {
-		if (typeof value === 'string' && textEncoder.encode(value).byteLength > CALENDAR_LIMITS.envelopeBytes) {
-			return failedEnvelope('unsupported_calendar_envelope', 'unsupported');
-		}
-		const envelope = typeof value === 'string' ? JSON.parse(value) : value;
-		if (!envelope || envelope.schemaVersion !== CALENDAR_SCHEMA_VERSION || envelope.parserVersion !== CALENDAR_PARSER_VERSION) {
-			return failedEnvelope('unsupported_calendar_envelope', 'unsupported');
-		}
-		if (!['parsed', 'partial', 'unsupported', 'failed'].includes(envelope.state)
-			|| !Array.isArray(envelope.sources)
-			|| !Array.isArray(envelope.events)
-			|| !Array.isArray(envelope.warnings)
-			|| serializedBytes(envelope) > CALENDAR_LIMITS.envelopeBytes) {
-			return failedEnvelope('unsupported_calendar_envelope', 'unsupported');
-		}
-		return envelope;
+		return parseCurrentEnvelope(value) || failedEnvelope('unsupported_calendar_envelope', 'unsupported');
 	} catch (_) {
 		return failedEnvelope('unsupported_calendar_envelope', 'unsupported');
 	}

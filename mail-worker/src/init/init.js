@@ -44,6 +44,21 @@ const dbInit = {
 		} catch (e) {
 			console.warn(`跳过字段：${e.message}`);
 		}
+		try {
+			await c.env.db.prepare(`ALTER TABLE attachments ADD COLUMN calendar_method TEXT;`).run();
+		} catch (e) {
+			console.warn(`跳过字段：${e.message}`);
+		}
+		await c.env.db.prepare(`
+			CREATE TABLE IF NOT EXISTS calendar_repair_guard (
+				email_id INTEGER NOT NULL,
+				user_id INTEGER NOT NULL,
+				window_started INTEGER NOT NULL,
+				attempts INTEGER NOT NULL DEFAULT 1,
+				retry_after INTEGER NOT NULL DEFAULT 0,
+				PRIMARY KEY (email_id, user_id)
+			)
+		`).run();
 	},
 
 	async v3_4DB(c) {

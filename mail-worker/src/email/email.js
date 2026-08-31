@@ -136,6 +136,7 @@ export async function email(message, env, ctx) {
 
 		for (let item of calendarReceipt.attachments) {
 			let attachment = { ...item };
+			attachment.calendarMethod = item.method || null;
 			attachment.key = constant.ATTACHMENT_PREFIX + await fileUtils.getBuffHash(attachment.content) + fileUtils.getExtFileName(item.filename);
 			attachment.size = item.content.length ?? item.content.byteLength;
 			attachments.push(attachment);

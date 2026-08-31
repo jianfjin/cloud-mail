@@ -11,6 +11,8 @@ import webhookService from '../src/service/webhook-service';
 const c = { env };
 
 async function resetEmailSchema() {
+	await env.db.prepare('DROP TABLE IF EXISTS calendar_repair_guard').run();
+	await env.db.prepare('DROP TABLE IF EXISTS attachments').run();
 	await env.db.prepare('DROP TABLE IF EXISTS email').run();
 	await env.db.prepare(`
 		CREATE TABLE email (
@@ -38,6 +40,15 @@ async function resetEmailSchema() {
 			unread INTEGER NOT NULL DEFAULT 0,
 			create_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
 			is_del INTEGER NOT NULL DEFAULT 0
+		)
+	`).run();
+	await env.db.prepare(`
+		CREATE TABLE attachments (
+			att_id INTEGER PRIMARY KEY,
+			user_id INTEGER NOT NULL,
+			email_id INTEGER NOT NULL,
+			account_id INTEGER NOT NULL,
+			key TEXT NOT NULL
 		)
 	`).run();
 }
@@ -99,15 +110,19 @@ describe('calendar receipt persistence', () => {
 	});
 
 	it('adds the calendar column idempotently without exposing it through list projections', async () => {
+		const warningSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 		await dbInit.v3_5DB(c);
 		await dbInit.v3_5DB(c);
 
 		const columns = await env.db.prepare('PRAGMA table_info(email)').all();
+		const attachmentColumns = await env.db.prepare('PRAGMA table_info(attachments)').all();
 		expect(columns.results.filter(column => column.name === 'calendar_data')).toHaveLength(1);
+		expect(attachmentColumns.results.filter(column => column.name === 'calendar_method')).toHaveLength(1);
 		expect(emailListColumns).not.toHaveProperty('calendarData');
 		expect(emailListColumns).toHaveProperty('hasCalendar');
 		expect(emailBriefColumns).not.toHaveProperty('calendarData');
 		expect(emailBriefColumns).not.toHaveProperty('hasCalendar');
+		warningSpy.mockRestore();
 	});
 
 	it('does not leak the internal envelope through webhook payloads', async () => {
