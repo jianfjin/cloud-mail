@@ -2,3 +2,10 @@ name = "calendar-test-mail"
 main = "src/index.js"
 compatibility_date = "2025-06-04"
 
+[[d1_databases]]
+binding = "db"
+database_name = "calendar-test-email"
+database_id = "e65f099d-796d-4eaa-8dff-529b368b20db"
+
+[vars]
+orm_log = false

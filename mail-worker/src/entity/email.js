@@ -10,6 +10,7 @@ export const email = sqliteTable('email', {
 	code: text('code').default('').notNull(),
 	text: text('text'),
 	content: text('content'),
+	calendarData: text('calendar_data'),
 	cc: text('cc').default('[]'),
 	bcc: text('bcc').default('[]'),
 	recipient: text('recipient'),

@@ -15,8 +15,13 @@ function sqlStripWhitespace(column) {
 		'> <', '><'))`;
 }
 
-/** 完整查询：全部字段 */
-export const emailListColumns = getTableColumns(email);
+const { calendarData, ...publicEmailColumns } = getTableColumns(email);
+
+/** 完整查询：排除内部日历数据，只暴露无敏感信息的存在标记 */
+export const emailListColumns = {
+	...publicEmailColumns,
+	hasCalendar: sql`CASE WHEN ${calendarData} IS NULL THEN 0 ELSE 1 END`.mapWith(Number).as('has_calendar'),
+};
 
 /** 摘要查询：列表 + 详情头部；有 text 则不读 content，没有才查 content（去空白），响应里不返回 content */
 export const emailBriefColumns = {

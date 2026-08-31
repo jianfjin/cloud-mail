@@ -12,6 +12,7 @@ import userService from '../service/user-service';
 import telegramService from '../service/telegram-service';
 import aiService from '../service/ai-service';
 import webhookService from '../service/webhook-service';
+import { prepareCalendarReceipt } from './calendar-receipt';
 
 export async function email(message, env, ctx) {
 
@@ -106,6 +107,8 @@ export async function email(message, env, ctx) {
 		const toName = email.to.find(item => item.address === message.to)?.name || '';
 		const code = await aiService.extractCode({ env }, email, { aiCode, aiCodeFilter });
 
+		const calendarReceipt = await prepareCalendarReceipt(email);
+
 		const params = {
 			toEmail: message.to,
 			toName: toName,
@@ -121,6 +124,7 @@ export async function email(message, env, ctx) {
 			inReplyTo: email.inReplyTo,
 			relation: email.references,
 			messageId: email.messageId,
+			calendarData: calendarReceipt.calendarData,
 			userId: account ? account.userId : 0,
 			accountId: account ? account.accountId : 0,
 			isDel: isDel.DELETE,
@@ -130,7 +134,7 @@ export async function email(message, env, ctx) {
 		const attachments = [];
 		const cidAttachments = [];
 
-		for (let item of email.attachments) {
+		for (let item of calendarReceipt.attachments) {
 			let attachment = { ...item };
 			attachment.key = constant.ATTACHMENT_PREFIX + await fileUtils.getBuffHash(attachment.content) + fileUtils.getExtFileName(item.filename);
 			attachment.size = item.content.length ?? item.content.byteLength;
