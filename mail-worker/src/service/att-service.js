@@ -1,6 +1,6 @@
 import orm from '../entity/orm';
 import { att } from '../entity/att';
-import { and, eq, isNull, inArray, desc } from 'drizzle-orm';
+import { and, eq, isNull, inArray, desc, asc, or, sql } from 'drizzle-orm';
 import r2Service from './r2-service';
 import constant from '../const/constant';
 import fileUtils from '../utils/file-utils';
@@ -47,6 +47,25 @@ const attService = {
 		).all();
 	},
 
+	calendarParts(c, emailId, userId) {
+		return orm(c).select({
+			key: att.key,
+			filename: att.filename,
+			mimeType: att.mimeType,
+			size: att.size,
+			method: att.calendarMethod,
+		}).from(att).where(and(
+			eq(att.emailId, emailId),
+			eq(att.userId, userId),
+			eq(att.type, attConst.type.ATT),
+			isNull(att.contentId),
+			or(
+				sql`lower(${att.mimeType}) = 'text/calendar'`,
+				sql`lower(${att.mimeType}) = 'application/ics'`,
+			),
+		)).orderBy(asc(att.attId)).all();
+	},
+
 	async toImageUrlHtml(c, content) {
 
 		const { r2Domain } = await settingService.query(c);
@@ -91,13 +110,10 @@ const attService = {
 
 				if (src.startsWith(domainUtils.toOssDomain(r2Domain))) {
 					attData.key = src.replace(domainUtils.toOssDomain(r2Domain) + '/','');
-					attData.path = src;
 				}
 
 				if (src.startsWith('attachments/')) {
-					const origin = new URL(c.req.url).origin;
 					attData.key = src;
-					attData.path = origin + '/' + src;
 				}
 
 				attData.contentId = cid;
@@ -117,22 +133,34 @@ const attService = {
 		}
 
 		//查询已有内嵌url图片信息
-		const keys = [...new Set(imageDataList.filter(item => item.path).map(item => item.key))];
+		const keys = [...new Set(imageDataList.filter(item => !item.content).map(item => item.key))];
 		const dbImageList  = await this.selectOneByKeys(c, keys);
 
 		//设置给当前附件
-		imageDataList.forEach(image => {
-			dbImageList.forEach(dbImage => {
-				if (image.path && (image.key === dbImage.key)) {
-					image.size = dbImage.size;
-					image.filename = dbImage.filename;
-					image.mimeType = dbImage.mimeType;
-					image.contentType = dbImage.mimeType;
-				}
-			})
-		})
+		await Promise.all(imageDataList.map(async image => {
+			if (image.content) {
+				return;
+			}
 
-		imageDataList = imageDataList.filter(image => !image.path || image.size);
+			const dbImage = dbImageList.find(dbImage => image.key === dbImage.key);
+			if (!dbImage) {
+				return;
+			}
+
+			image.size = dbImage.size;
+			image.filename = dbImage.filename;
+			image.mimeType = dbImage.mimeType;
+			image.contentType = dbImage.mimeType;
+
+			const obj = await r2Service.getObj(c, image.key);
+			if (!obj) {
+				return;
+			}
+
+			image.content = obj instanceof ArrayBuffer ? obj : await obj.arrayBuffer();
+		}))
+
+		imageDataList = imageDataList.filter(image => image.content);
 
 		return { imageDataList, html: document.toString() };
 	},
@@ -232,7 +260,11 @@ const attService = {
 		const delKeyList = attListResult.flatMap(r => r.results ? r.results.map(row => row.key) : []);
 
 		if (delKeyList.length > 0) {
-			await this.batchDelete(c, delKeyList);
+			try {
+				await this.batchDelete(c, delKeyList);
+			} catch (e) {
+				console.error('删除附件文件失败：', e);
+			}
 		}
 
 	},

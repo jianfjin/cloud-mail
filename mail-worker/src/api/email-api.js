@@ -3,6 +3,7 @@ import emailService from '../service/email-service';
 import result from '../model/result';
 import userContext from '../security/user-context';
 import attService from '../service/att-service';
+import calendarPreviewService from '../service/calendar-preview-service';
 
 app.get('/email/list', async (c) => {
 	const data = await emailService.list(c, c.req.query(), userContext.getUserId(c));
@@ -34,3 +35,19 @@ app.put('/email/read', async (c) => {
 	return c.json(result.ok());
 })
 
+app.post('/email/calendar-preview', async (c) => {
+	c.header('Cache-Control', 'private, no-store');
+	const body = await c.req.json().catch(() => null);
+	if (!body || Object.keys(body).length !== 1 || !Object.hasOwn(body, 'emailId')) {
+		return c.json(result.fail('Invalid request', 400), 400);
+	}
+
+	const preview = await calendarPreviewService.getPreview(c, {
+		emailId: body.emailId,
+		userId: userContext.getUserId(c),
+	});
+	if (preview.status === 'not_found') return c.json(result.fail('Not found', 404), 404);
+	if (preview.status === 'rate_limited') return c.json(result.fail('Try again later', 429), 429);
+	if (preview.status === 'retryable') return c.json(result.fail('Preview temporarily unavailable', 503), 503);
+	return c.json(result.ok(preview.envelope));
+});

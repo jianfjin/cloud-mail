@@ -1,0 +1,17 @@
+name = "calendar-test-mail"
+main = "src/index.js"
+compatibility_date = "2025-06-04"
+
+[[d1_databases]]
+binding = "db"
+database_name = "calendar-test-email"
+database_id = "e65f099d-796d-4eaa-8dff-529b368b20db"
+
+[[kv_namespaces]]
+binding = "kv"
+id = "9be10cd058e04c55b526f8c0c116f50c"
+
+[vars]
+orm_log = false
+jwt_secret = "calendar-test-secret"
+admin = "admin@example.com"

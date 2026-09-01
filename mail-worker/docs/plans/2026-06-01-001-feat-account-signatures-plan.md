@@ -281,4 +281,3 @@ Automated browser coverage is deferred for v1 because the Vue app does not curre
 - MG7. Clear Account A signature, open a new compose window from Account A, and confirm no placeholder or empty signature block is inserted.
 - MG8. Save malicious signature HTML containing script/event/javascript/style-url payloads, then confirm account save, compose insertion, send, and read-mail display keep the unsafe content removed or inert.
 - MG9. Save a draft containing a signature, reopen it, and confirm the saved body is preserved and sender changes do not reapply or swap signatures unexpectedly.
-

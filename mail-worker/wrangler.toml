@@ -6,18 +6,24 @@ keep_vars = true
 [observability]
 enabled = true
 
-[[d1_databases]]
-binding = "db"			#d1数据库绑定名默认不可修改
-database_name = "cloud-mail-db"		#d1数据库名字
-database_id = "37af850a-d300-4a8a-a71a-4864a7e5cdf6"		#d1数据库id
+#[[d1_databases]]
+#binding = "db"			#d1数据库绑定名默认不可修改
+#database_name = ""		#d1数据库名字
+#database_id = ""		#d1数据库id
 
-[[kv_namespaces]]
-binding = "kv"			#kv绑定名默认不可修改
-id = "00b08442a72046d686fefa1ab33d4708"		#kv数据库id
+#[[kv_namespaces]]
+#binding = "kv"			#kv绑定名默认不可修改
+#id = ""					#kv数据库id
 
 #[[r2_buckets]]
 binding = "r2"			#r2对象存储绑定名默认不可修改
 bucket_name = "cloud-mail-r2"		#r2对象存储桶的名字
+
+#[[send_email]]
+#name = "email"			#CF发件, 配置后优先使用
+
+[ai]
+binding = "ai"
 
 [assets]
 binding = "assets"		#静态资源绑定名默认不可修改
@@ -26,7 +32,7 @@ not_found_handling = "single-page-application"
 run_worker_first = true
 
 [triggers]
-crons = ["0 16 * * *"]	#定时任务每天晚上12点执行
+crons = ["0 * * * *"]	#每小时执行；resetDaySendCount 仅在 UTC 0 点生效
 
 
 [vars]

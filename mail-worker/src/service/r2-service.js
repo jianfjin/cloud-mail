@@ -40,8 +40,29 @@ const r2Service = {
 
 	},
 
-	async getObj(c, key) {
-		return await c.env.r2.get(key);
+	async getObj(c, key, options = {}) {
+		const storageType = await this.storageType(c);
+
+		if (storageType === 'KV') {
+			return await kvObjService.getObj(c, key, options);
+		}
+
+		if (storageType === 'R2') {
+			if (!options.maxBytes) return await c.env.r2.get(key);
+			const object = await c.env.r2.get(key, { range: { offset: 0, length: options.maxBytes } });
+			if (!object) return null;
+			return new Response(object.body, {
+				headers: {
+					'Content-Type': object.httpMetadata?.contentType || 'application/octet-stream',
+					'Content-Disposition': object.httpMetadata?.contentDisposition || '',
+					'Cache-Control': object.httpMetadata?.cacheControl || '',
+				},
+			});
+		}
+
+		if (storageType === 'S3') {
+			return await s3Service.getObj(c, key, options);
+		}
 	},
 
 	async delete(c, key) {

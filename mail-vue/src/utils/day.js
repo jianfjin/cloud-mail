@@ -91,3 +91,41 @@ export function toUtc(time) {
 export function setExtend(lang) {
     dayjs.locale(lang)
 }
+
+function calendarLocalDate(value) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2})(?::(\d{2}))?)?$/.exec(value || '')
+    if (!match) return null
+    return new Date(Date.UTC(
+        Number(match[1]), Number(match[2]) - 1, Number(match[3]),
+        Number(match[4] || 0), Number(match[5] || 0), Number(match[6] || 0),
+    ))
+}
+
+/** Format a normalized calendar point without inventing timezone information. */
+export function formatCalendarPoint(point, locale = 'en') {
+    if (!point || typeof point !== 'object') return null
+    const viewerTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+    if ((point.kind === 'utc' || point.kind === 'zoned') && typeof point.instant === 'string') {
+        const instant = new Date(point.instant)
+        if (Number.isNaN(instant.getTime())) return null
+        return {
+            kind: point.kind,
+            text: new Intl.DateTimeFormat(locale, {
+                dateStyle: 'medium', timeStyle: 'short', timeZone: viewerTimeZone,
+            }).format(instant),
+            viewerTimeZone,
+            sourceTimeZone: typeof point.timezone === 'string' ? point.timezone : null,
+        }
+    }
+    if (!['all-day', 'floating', 'unresolved'].includes(point.kind) || typeof point.value !== 'string') return null
+    const local = calendarLocalDate(point.value)
+    if (!local) return null
+    return {
+        kind: point.kind,
+        text: new Intl.DateTimeFormat(locale, point.kind === 'all-day'
+            ? {dateStyle: 'medium', timeZone: 'UTC'}
+            : {dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC'}).format(local),
+        viewerTimeZone: null,
+        sourceTimeZone: typeof point.timezone === 'string' ? point.timezone : null,
+    }
+}
