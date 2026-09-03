@@ -298,6 +298,10 @@ describe('historical calendar invitation repair', () => {
 
 	it('binds RSVP mutations to the authenticated user and restricts provider administration', async () => {
 		const respond = vi.spyOn(calendarResponseService, 'respond').mockResolvedValue({responseId: 7, deliveryState: 'delivered'});
+		await env.db.prepare('INSERT INTO user (user_id, type) VALUES (202, 1), (203, 1)').run();
+		await env.db.prepare('INSERT INTO role (role_id) VALUES (1)').run();
+		await env.db.prepare("INSERT INTO perm (perm_id, perm_key, type) VALUES (1, 'email:send', 2)").run();
+		await env.db.prepare('INSERT INTO role_perm (role_id, perm_id) VALUES (1, 1)').run();
 		const recipientHeaders = await authorizationHeader(202);
 		const response = await app.request('/email/calendar-response', {
 			method: 'POST',
@@ -309,7 +313,16 @@ describe('historical calendar invitation repair', () => {
 			emailId: 1, eventUid: 'event-1', accountId: 11, participationStatus: 'ACCEPTED',
 		}, 202);
 
-		await env.db.prepare('INSERT INTO user (user_id, type) VALUES (202, 1)').run();
+		await env.db.prepare('DELETE FROM role_perm').run();
+		const deniedRecipientHeaders = await authorizationHeader(203);
+		const deniedResponse = await app.request('/email/calendar-response', {
+			method: 'POST',
+			headers: deniedRecipientHeaders,
+			body: JSON.stringify({emailId: 1, eventUid: 'event-1', accountId: 11, participationStatus: 'ACCEPTED'}),
+		}, env);
+		expect((await deniedResponse.json()).code).toBe(403);
+		expect(respond).toHaveBeenCalledTimes(1);
+
 		const denied = await app.request('/calendar/providers', {headers: recipientHeaders}, env);
 		expect((await denied.json()).code).toBe(403);
 

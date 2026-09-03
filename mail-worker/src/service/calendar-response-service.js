@@ -8,6 +8,7 @@ import accountService from './account-service';
 import emailService from './email-service';
 
 const PARTICIPATION_STATUSES = new Set(['ACCEPTED', 'TENTATIVE', 'DECLINED']);
+const DISPATCH_UNKNOWN_AFTER_MS = 5 * 60 * 1000;
 
 function normalizedAddress(value) {
 	if (typeof value !== 'string') return null;
@@ -134,7 +135,31 @@ function responseIdentity(criteria, participationStatus) {
 }
 
 async function findResponse(c, criteria, participationStatus) {
-	return orm(c).select().from(calendarResponse).where(responseIdentity(criteria, participationStatus)).get();
+	const response = await orm(c).select().from(calendarResponse).where(responseIdentity(criteria, participationStatus)).get();
+	return reconcileStaleDispatch(c, response);
+}
+
+function responseTimestamp(response) {
+	const value = response?.dispatchedTime || response?.updateTime || response?.createTime;
+	if (typeof value !== 'string') return Number.NaN;
+	const normalized = value.includes('T') ? value : value.replace(' ', 'T') + 'Z';
+	return Date.parse(normalized);
+}
+
+async function reconcileStaleDispatch(c, response) {
+	if (!response || response.deliveryState !== 'dispatching') return response;
+	const timestamp = responseTimestamp(response);
+	if (!Number.isFinite(timestamp) || Date.now() - timestamp < DISPATCH_UNKNOWN_AFTER_MS) return response;
+	const reconciled = await orm(c).update(calendarResponse).set({
+		deliveryState: 'delivery_unknown',
+		updateTime: new Date().toISOString(),
+	}).where(and(
+		eq(calendarResponse.responseId, response.responseId),
+		eq(calendarResponse.deliveryState, 'dispatching'),
+	)).returning().get();
+	if (reconciled) return reconciled;
+	return orm(c).select().from(calendarResponse)
+		.where(eq(calendarResponse.responseId, response.responseId)).get();
 }
 
 async function dispatch(c, response, invitation) {
@@ -210,10 +235,11 @@ const calendarResponseService = {
 	async retry(c, params, userId) {
 		const responseId = Number(params.responseId);
 		if (!Number.isInteger(responseId) || responseId <= 0) throw new BizError('Calendar response identity is invalid.', 400);
-		const response = await orm(c).select().from(calendarResponse).where(and(
+		let response = await orm(c).select().from(calendarResponse).where(and(
 			eq(calendarResponse.responseId, responseId),
 			eq(calendarResponse.userId, userId),
 		)).get();
+		response = await reconcileStaleDispatch(c, response);
 		if (!response) throw new BizError('Calendar response not found.', 404);
 		if (response.deliveryState !== 'retryable_no_send') return response;
 
@@ -233,13 +259,14 @@ const calendarResponseService = {
 	async eligibility(c, params, userId) {
 		try {
 			const invitation = await resolveEligibleInvitation(c, params, userId);
-			const responses = await orm(c).select().from(calendarResponse).where(and(
+			const storedResponses = await orm(c).select().from(calendarResponse).where(and(
 				eq(calendarResponse.emailId, invitation.emailId),
 				eq(calendarResponse.eventUid, invitation.eventUid),
 				eq(calendarResponse.recurrenceId, invitation.recurrenceId),
 				eq(calendarResponse.accountId, invitation.accountId),
 				eq(calendarResponse.userId, userId),
 			)).all();
+			const responses = await Promise.all(storedResponses.map(response => reconcileStaleDispatch(c, response)));
 			return {
 				eligible: true,
 				organizer: {
@@ -253,13 +280,6 @@ const calendarResponseService = {
 			if (error instanceof BizError) return {eligible: false};
 			throw error;
 		}
-	},
-
-	getByEmailId(c, emailId, userId) {
-		return orm(c).select().from(calendarResponse).where(and(
-			eq(calendarResponse.emailId, Number(emailId)),
-			eq(calendarResponse.userId, userId),
-		)).all();
 	},
 
 	async removeByEmailIds(c, emailIds) {

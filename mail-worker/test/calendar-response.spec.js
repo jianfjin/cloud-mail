@@ -157,6 +157,31 @@ describe('calendar RSVP responses', () => {
 		expect(send).toHaveBeenCalledTimes(3);
 	});
 
+	it('reconciles a stale dispatch as delivery unknown without sending again', async () => {
+		const send = vi.spyOn(emailService, 'send').mockResolvedValue([]);
+		await env.db.prepare(`
+			INSERT INTO calendar_response
+				(email_id, event_uid, account_id, user_id, participation_status, organizer, delivery_state, dispatched_time)
+			VALUES (1, ?, 11, 99, 'ACCEPTED', 'organizer@example.test', 'dispatching', '2000-01-01T00:00:00.000Z')
+		`).bind(invitation.uid).run();
+
+		const eligibility = await calendarResponseService.eligibility(c, {
+			emailId: 1,
+			eventUid: invitation.uid,
+			accountId: 11,
+		}, 99);
+		expect(eligibility.responses[0].deliveryState).toBe('delivery_unknown');
+
+		const repeated = await calendarResponseService.respond(c, {
+			emailId: 1,
+			eventUid: invitation.uid,
+			accountId: 11,
+			participationStatus: 'ACCEPTED',
+		}, 99);
+		expect(repeated.deliveryState).toBe('delivery_unknown');
+		expect(send).not.toHaveBeenCalled();
+	});
+
 	it('removes response records through the email and mailbox deletion hooks', async () => {
 		vi.spyOn(emailService, 'send').mockResolvedValue([]);
 		await calendarResponseService.respond(c, {
