@@ -34,8 +34,55 @@ const dbInit = {
 		await this.v3_3DB(c);
 		await this.v3_4DB(c);
 		await this.v3_5DB(c);
+		await this.v3_6DB(c);
 		await settingService.refresh(c);
 		return c.text('success');
+	},
+
+	async v3_6DB(c) {
+		await c.env.db.batch([
+			c.env.db.prepare(`
+				CREATE TABLE IF NOT EXISTS calendar_response (
+					response_id INTEGER PRIMARY KEY AUTOINCREMENT,
+					email_id INTEGER NOT NULL,
+					event_uid TEXT NOT NULL,
+					recurrence_id TEXT NOT NULL DEFAULT '',
+					account_id INTEGER NOT NULL,
+					user_id INTEGER NOT NULL,
+					participation_status TEXT NOT NULL,
+					organizer TEXT NOT NULL,
+					delivery_state TEXT NOT NULL DEFAULT 'dispatching',
+					provider_receipt TEXT NOT NULL DEFAULT '',
+					create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+					update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+					dispatched_time DATETIME,
+					delivered_time DATETIME,
+					UNIQUE (email_id, event_uid, recurrence_id, account_id, participation_status)
+				)
+			`),
+			c.env.db.prepare(`
+				CREATE TABLE IF NOT EXISTS calendar_provider (
+					provider_id INTEGER PRIMARY KEY AUTOINCREMENT,
+					host TEXT NOT NULL,
+					label TEXT NOT NULL,
+					enabled INTEGER NOT NULL DEFAULT 1,
+					created_by_user_id INTEGER NOT NULL DEFAULT 0,
+					updated_by_user_id INTEGER NOT NULL DEFAULT 0,
+					create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+					update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+				)
+			`),
+			c.env.db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_calendar_provider_host_nocase ON calendar_provider(host COLLATE NOCASE)`),
+			c.env.db.prepare(`CREATE INDEX IF NOT EXISTS idx_calendar_response_email ON calendar_response(email_id)`),
+			c.env.db.prepare(`CREATE INDEX IF NOT EXISTS idx_calendar_response_user_state ON calendar_response(user_id, delivery_state)`),
+			c.env.db.prepare(`
+				INSERT OR IGNORE INTO calendar_provider (host, label, enabled)
+				VALUES
+					('meet.google.com', 'Google Meet', 1),
+					('teams.microsoft.com', 'Microsoft Teams', 1),
+					('teams.live.com', 'Microsoft Teams', 1)
+			`),
+		]);
 	},
 
 	async v3_5DB(c) {

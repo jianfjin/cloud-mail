@@ -14,6 +14,8 @@ import webhookService from '../src/service/webhook-service';
 const c = { env };
 
 async function resetEmailSchema() {
+	await env.db.prepare('DROP TABLE IF EXISTS calendar_response').run();
+	await env.db.prepare('DROP TABLE IF EXISTS calendar_provider').run();
 	await env.db.prepare('DROP TABLE IF EXISTS calendar_repair_guard').run();
 	await env.db.prepare('DROP TABLE IF EXISTS attachments').run();
 	await env.db.prepare('DROP TABLE IF EXISTS email').run();
@@ -146,6 +148,26 @@ describe('calendar receipt persistence', () => {
 		expect(briefOrdinary).toMatchObject({hasCalendar: 0});
 		expect(briefCalendar).not.toHaveProperty('calendarData');
 		warningSpy.mockRestore();
+	});
+
+	it('adds calendar response and provider storage without duplicating default providers', async () => {
+		await dbInit.v3_6DB(c);
+		await dbInit.v3_6DB(c);
+
+		const tables = await env.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('calendar_response', 'calendar_provider') ORDER BY name").all();
+		const providers = await env.db.prepare('SELECT host, label, enabled FROM calendar_provider ORDER BY host').all();
+		const responseIndexes = await env.db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'calendar_response'").all();
+
+		expect(tables.results.map(({name}) => name)).toEqual(['calendar_provider', 'calendar_response']);
+		expect(providers.results).toEqual([
+			{host: 'meet.google.com', label: 'Google Meet', enabled: 1},
+			{host: 'teams.live.com', label: 'Microsoft Teams', enabled: 1},
+			{host: 'teams.microsoft.com', label: 'Microsoft Teams', enabled: 1},
+		]);
+		expect(responseIndexes.results.map(({name}) => name)).toEqual(expect.arrayContaining([
+			'idx_calendar_response_email',
+			'idx_calendar_response_user_state',
+		]));
 	});
 
 	it('does not leak the internal envelope through webhook payloads', async () => {
