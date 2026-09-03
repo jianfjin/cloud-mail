@@ -401,6 +401,22 @@ const zh = {
     calendarMoreDetails: '描述和参与者',
     calendarDescription: '描述',
     calendarAttendees: '参与者',
-    calendarAttendeesOmitted: '另有 {count} 位参与者已省略'
+    calendarAttendeesOmitted: '另有 {count} 位参与者已省略',
+    calendarRsvpFor: '将以 {account} 的身份回复 {organizer}',
+    calendarRsvp_ACCEPTED: '接受',
+    calendarRsvp_TENTATIVE: '暂定',
+    calendarRsvp_DECLINED: '拒绝',
+    calendarRsvpConfirm: '是否以 {account} 的身份向 {organizer} 发送“{status}”回复？',
+    calendarRsvpState_dispatching: '正在发送',
+    calendarRsvpState_delivered: '已送达',
+    calendarRsvpState_retryable_no_send: '未发送',
+    calendarRsvpState_delivery_unknown: '送达状态未知。请先与组织者确认，再次回复。',
+    calendarRsvpRetry: '重试',
+    calendarRsvpError: '无法发送回复。仅在显示“未发送”时重试。',
+    calendarProviders: '会议服务商',
+    calendarProviderHost: '精确 HTTPS 主机名',
+    calendarProviderLabel: '显示名称',
+    calendarProviderAdd: '添加服务商',
+    calendarProviderEmpty: '尚未配置会议服务商。'
 }
 export default zh

@@ -39,6 +39,8 @@
             :key="email.emailId"
             :envelope="calendarEntry?.envelope"
             :request-state="calendarRequestState"
+            :email-id="email.emailId"
+            :account-id="email.accountId"
             @retry="retryCalendarPreview"
           />
           <el-scrollbar v-if="email.content || email.text" class="htm-scrollbar" :class="!email.attList?.length ? 'bottom-distance' : ''">

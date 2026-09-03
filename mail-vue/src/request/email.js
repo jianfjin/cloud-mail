@@ -20,6 +20,18 @@ export function emailCalendarPreview(emailId) {
     return http.post('/email/calendar-preview', {emailId}, {noMsg: true})
 }
 
+export function emailCalendarEligibility(params) {
+    return http.post('/email/calendar-response/eligibility', params, {noMsg: true})
+}
+
+export function emailCalendarResponse(params) {
+    return http.post('/email/calendar-response', params, {noMsg: true})
+}
+
+export function emailCalendarResponseRetry(params) {
+    return http.post('/email/calendar-response/retry', params, {noMsg: true})
+}
+
 export function emailSend(form,progress) {
     return http.post('/email/send', form,{
         onUploadProgress: (e) => {

@@ -60,6 +60,36 @@
           @click="confirmUnverified(event.meetingLink)"
         >{{ t('calendarReviewMeetingLink', {host: event.meetingLink.hostname}) }}</button>
 
+        <section v-if="event.rsvp?.eligible" class="calendar-event__rsvp" aria-live="polite">
+          <p class="calendar-event__rsvp-for">
+            {{ t('calendarRsvpFor', {organizer: event.rsvp.organizerLabel, account: event.rsvp.account.email}) }}
+          </p>
+          <div class="calendar-event__rsvp-actions">
+            <button
+              v-for="status in rsvpStatuses"
+              :key="status"
+              type="button"
+              :data-testid="'calendar-rsvp-' + status"
+              :disabled="Boolean(event.rsvp.pendingStatus)"
+              @click="sendRsvp(event, status)"
+            >{{ t('calendarRsvp_' + status) }}</button>
+          </div>
+          <p v-if="event.rsvp.pendingStatus" class="calendar-event__rsvp-result">
+            {{ t('calendarRsvpState_dispatching') }}
+          </p>
+          <p v-if="event.rsvp.error" class="calendar-event__rsvp-error">{{ t('calendarRsvpError') }}</p>
+          <div v-for="response in event.rsvp.responses" :key="response.responseId || response.participationStatus" class="calendar-event__rsvp-result">
+            <span>{{ t('calendarRsvp_' + response.participationStatus) }}: {{ t('calendarRsvpState_' + response.deliveryState) }}</span>
+            <button
+              v-if="response.deliveryState === 'retryable_no_send'"
+              type="button"
+              :data-testid="'calendar-rsvp-retry-' + response.responseId"
+              :disabled="Boolean(event.rsvp.pendingStatus)"
+              @click="retryRsvp(event, response)"
+            >{{ t('calendarRsvpRetry') }}</button>
+          </div>
+        </section>
+
         <details v-if="event.description || event.attendees.length || event.omittedAttendeeCount" class="calendar-event__details">
           <summary>{{ t('calendarMoreDetails') }}</summary>
           <div v-if="event.description" class="calendar-event__description">
@@ -86,14 +116,17 @@
 </template>
 
 <script setup>
-import {computed} from 'vue'
+import {computed, reactive, watch} from 'vue'
 import {ElMessageBox} from 'element-plus'
 import {useI18n} from 'vue-i18n'
 import {formatCalendarPoint} from '@/utils/day.js'
+import {emailCalendarEligibility, emailCalendarResponse, emailCalendarResponseRetry} from '@/request/email.js'
 
 const props = defineProps({
   envelope: {type: Object, default: null},
   requestState: {type: String, default: 'success'},
+  emailId: {type: Number, default: 0},
+  accountId: {type: Number, default: 0},
 })
 
 defineEmits(['retry'])
@@ -101,11 +134,8 @@ defineEmits(['retry'])
 const {t, locale} = useI18n()
 const titleId = `calendar-preview-${Math.random().toString(36).slice(2)}`
 const envelopeStates = new Set(['parsed', 'partial', 'unsupported', 'failed'])
-const trustedProviders = new Map([
-  ['meet.google.com', 'google-meet'],
-  ['teams.microsoft.com', 'microsoft-teams'],
-  ['teams.live.com', 'microsoft-teams'],
-])
+const rsvpStatuses = ['ACCEPTED', 'TENTATIVE', 'DECLINED']
+const rsvpEntries = reactive({})
 
 function boundedString(value, maximum = 32768) {
   return typeof value === 'string' ? value.slice(0, maximum) : ''
@@ -125,7 +155,7 @@ function meetingLink(value) {
     const parsed = new URL(value.url)
     if (parsed.protocol !== 'https:' || parsed.username || parsed.password || !parsed.hostname) return null
     const hostname = parsed.hostname.toLowerCase()
-    const direct = value.trust === 'trusted' && trustedProviders.get(hostname) === value.provider
+    const direct = value.trust === 'trusted'
     return {url: parsed.href, hostname, direct}
   } catch (_) {
     return null
@@ -142,8 +172,12 @@ function normalizedEvent(value, index) {
   }
   const recurrenceId = boundedString(value.recurrenceId, 512)
   const action = ['invitation', 'update', 'cancellation', 'calendar'].includes(value.action) ? value.action : 'calendar'
+  const key = (boundedString(value.uid, 512) || 'event') + ':' + recurrenceId + ':' + (Number(value.sequence) || 0) + ':' + index
   return {
-    key: `${boundedString(value.uid, 512) || 'event'}:${recurrenceId}:${Number(value.sequence) || 0}:${index}`,
+    key,
+    uid: boundedString(value.uid, 512),
+    recurrenceId: value.recurrenceId || null,
+    action,
     actionKey: action === 'cancellation' && recurrenceId
       ? 'calendarAction_instanceCancellation'
       : `calendarAction_${action}`,
@@ -159,13 +193,14 @@ function normalizedEvent(value, index) {
     start: value.start,
     end: value.end,
     meetingLink: meetingLink(value.meetingLink),
+    rsvp: rsvpEntries[key] || null,
   }
 }
 
 const validEnvelope = computed(() => {
   const value = props.envelope
   if (!value || typeof value !== 'object'
-    || value.schemaVersion !== 1
+    || value.schemaVersion !== 2
     || value.parserVersion !== 'ical.js/2.2.1'
     || !envelopeStates.has(value.state)
     || !Array.isArray(value.events)) return null
@@ -201,6 +236,54 @@ const events = computed(() => (validEnvelope.value?.events || [])
   .filter(Boolean)
   .map(event => ({...event, time: eventTime(event)})))
 
+let eligibilityGeneration = 0
+
+function organizerLabel(organizer) {
+  if (!organizer) return ''
+  if (organizer.name && organizer.address) return organizer.name + ' <' + organizer.address + '>'
+  return organizer.name || organizer.address || ''
+}
+
+async function loadEligibility() {
+  const generation = ++eligibilityGeneration
+  const emailId = Number(props.emailId)
+  const accountId = Number(props.accountId)
+  if (!emailId || !accountId) return
+
+  const invitations = events.value.filter(event => event.action === 'invitation' && event.uid)
+  for (const event of invitations) {
+    rsvpEntries[event.key] = {eligible: false, responses: [], pendingStatus: 'loading', error: ''}
+  }
+
+  await Promise.all(invitations.map(async event => {
+    try {
+      const data = await emailCalendarEligibility({
+        emailId,
+        eventUid: event.uid,
+        recurrenceId: event.recurrenceId,
+        accountId,
+      })
+      if (generation !== eligibilityGeneration) return
+      rsvpEntries[event.key] = {
+        ...data,
+        organizerLabel: organizerLabel(data?.organizer),
+        responses: Array.isArray(data?.responses) ? data.responses : [],
+        pendingStatus: '',
+        error: '',
+      }
+    } catch (_) {
+      if (generation !== eligibilityGeneration) return
+      rsvpEntries[event.key] = {eligible: false, responses: [], pendingStatus: '', error: ''}
+    }
+  }))
+}
+
+watch(
+  () => [props.emailId, props.accountId, validEnvelope.value],
+  () => loadEligibility(),
+  {immediate: true},
+)
+
 const heading = computed(() => events.value.length === 1
   ? events.value[0].summary || t('calendarUntitledEvent')
   : t('calendarEvents', {count: events.value.length}))
@@ -208,6 +291,62 @@ const heading = computed(() => events.value.length === 1
 function personLabel(person) {
   if (person.name && person.address) return `${person.name} <${person.address}>`
   return person.name || person.address
+}
+
+function responsePayload(event, participationStatus) {
+  return {
+    emailId: Number(props.emailId),
+    eventUid: event.uid,
+    recurrenceId: event.recurrenceId,
+    accountId: Number(props.accountId),
+    participationStatus,
+  }
+}
+
+function applyResponse(entry, response) {
+  const responses = Array.isArray(entry.responses) ? entry.responses : []
+  entry.responses = [...responses.filter(item => item.participationStatus !== response.participationStatus), response]
+  entry.error = ''
+}
+
+async function sendRsvp(event, participationStatus) {
+  const entry = rsvpEntries[event.key]
+  if (!entry?.eligible || entry.pendingStatus) return
+  try {
+    await ElMessageBox.confirm(t('calendarRsvpConfirm', {
+      status: t('calendarRsvp_' + participationStatus),
+      organizer: entry.organizerLabel,
+      account: entry.account?.email || '',
+    }), {
+      confirmButtonText: t('confirm'),
+      cancelButtonText: t('cancel'),
+      type: 'warning',
+    })
+  } catch (_) {
+    return
+  }
+
+  entry.pendingStatus = participationStatus
+  try {
+    applyResponse(entry, await emailCalendarResponse(responsePayload(event, participationStatus)))
+  } catch (_) {
+    entry.error = true
+  } finally {
+    entry.pendingStatus = ''
+  }
+}
+
+async function retryRsvp(event, response) {
+  const entry = rsvpEntries[event.key]
+  if (!entry || entry.pendingStatus || response.deliveryState !== 'retryable_no_send') return
+  entry.pendingStatus = response.participationStatus
+  try {
+    applyResponse(entry, await emailCalendarResponseRetry({responseId: response.responseId}))
+  } catch (_) {
+    entry.error = true
+  } finally {
+    entry.pendingStatus = ''
+  }
 }
 
 async function confirmUnverified(link) {
@@ -310,6 +449,35 @@ async function confirmUnverified(link) {
   color: var(--el-color-warning);
 }
 
+.calendar-event__rsvp {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 12px;
+  border-left: 3px solid var(--el-color-primary);
+  background: var(--el-fill-color-light);
+}
+
+.calendar-event__rsvp-for,
+.calendar-event__rsvp-result,
+.calendar-event__rsvp-error { font-size: 13px; }
+.calendar-event__rsvp-for { color: var(--regular-text-color); }
+.calendar-event__rsvp-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.calendar-event__rsvp-actions button,
+.calendar-event__rsvp-result button {
+  min-height: 32px;
+  border: 1px solid var(--el-color-primary);
+  border-radius: 4px;
+  padding: 0 10px;
+  background: transparent;
+  color: var(--el-color-primary);
+  cursor: pointer;
+}
+.calendar-event__rsvp-actions button:disabled,
+.calendar-event__rsvp-result button:disabled { cursor: wait; opacity: .65; }
+.calendar-event__rsvp-result { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.calendar-event__rsvp-error { color: var(--el-color-danger); }
+
 .calendar-preview button:focus-visible,
 .calendar-preview a:focus-visible,
 .calendar-preview summary:focus-visible {
@@ -332,5 +500,6 @@ async function confirmUnverified(link) {
   .calendar-event__row { grid-template-columns: 1fr; }
   .calendar-event__qualifier { grid-column: 1; }
   .calendar-event__join { width: 100%; justify-content: center; text-align: center; }
+  .calendar-event__rsvp-actions button { flex: 1 1 110px; }
 }
 </style>

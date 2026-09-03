@@ -401,7 +401,23 @@ const en = {
     calendarMoreDetails: 'Description and attendees',
     calendarDescription: 'Description',
     calendarAttendees: 'Attendees',
-    calendarAttendeesOmitted: '{count} more attendees were omitted'
+    calendarAttendeesOmitted: '{count} more attendees were omitted',
+    calendarRsvpFor: 'Responding to {organizer} as {account}',
+    calendarRsvp_ACCEPTED: 'Accept',
+    calendarRsvp_TENTATIVE: 'Tentative',
+    calendarRsvp_DECLINED: 'Decline',
+    calendarRsvpConfirm: 'Send {status} to {organizer} from {account}?',
+    calendarRsvpState_dispatching: 'Sending',
+    calendarRsvpState_delivered: 'Delivered',
+    calendarRsvpState_retryable_no_send: 'Not sent',
+    calendarRsvpState_delivery_unknown: 'Delivery status unknown. Reconcile with the organizer before responding again.',
+    calendarRsvpRetry: 'Retry',
+    calendarRsvpError: 'Unable to send the response. Try again only when it is shown as not sent.',
+    calendarProviders: 'Meeting providers',
+    calendarProviderHost: 'Exact HTTPS host',
+    calendarProviderLabel: 'Display name',
+    calendarProviderAdd: 'Add provider',
+    calendarProviderEmpty: 'No meeting providers configured.'
 }
 
 export default en

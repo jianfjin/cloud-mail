@@ -8,20 +8,28 @@ import en from '@/i18n/en.js'
 
 const confirm = vi.fn()
 const emailCalendarPreview = vi.fn()
+const emailCalendarEligibility = vi.fn()
+const emailCalendarResponse = vi.fn()
+const emailCalendarResponseRetry = vi.fn()
 
 vi.mock('element-plus', async importOriginal => ({
   ...await importOriginal(),
   ElMessageBox: {confirm},
 }))
 
-vi.mock('@/request/email.js', () => ({emailCalendarPreview}))
+vi.mock('@/request/email.js', () => ({
+  emailCalendarPreview,
+  emailCalendarEligibility,
+  emailCalendarResponse,
+  emailCalendarResponseRetry,
+}))
 
 let CalendarInvitation
 let useEmailStore
 
 function envelope(events = [], state = 'parsed') {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     parserVersion: 'ical.js/2.2.1',
     state,
     sources: [],
@@ -61,7 +69,7 @@ function event(overrides = {}) {
 function render(props = {}) {
   const i18n = createI18n({legacy: false, locale: 'en', messages: {en}})
   return mount(CalendarInvitation, {
-    props: {envelope: envelope([event()]), requestState: 'success', ...props},
+    props: {emailId: 99, accountId: 11, envelope: envelope([event()]), requestState: 'success', ...props},
     global: {plugins: [i18n]},
   })
 }
@@ -76,6 +84,10 @@ beforeEach(() => {
   setActivePinia(createPinia())
   confirm.mockReset()
   emailCalendarPreview.mockReset()
+  emailCalendarEligibility.mockReset()
+  emailCalendarResponse.mockReset()
+  emailCalendarResponseRetry.mockReset()
+  emailCalendarEligibility.mockResolvedValue({eligible: false})
   localStorage.clear()
   vi.restoreAllMocks()
 })
@@ -127,6 +139,96 @@ describe('calendar invitation', () => {
     expect(wrapper.text()).toContain('Event cancellation · sender-declared')
     expect(wrapper.text()).toContain('Occurrence cancellation · sender-declared')
     expect(wrapper.text()).not.toMatch(/accept|decline|rsvp/i)
+  })
+
+  it('uses API-declared eligibility to confirm and send an RSVP for the selected account', async () => {
+    emailCalendarEligibility.mockResolvedValue({
+      eligible: true,
+      organizer: {name: 'Zoe Example', address: 'zoe@example.com'},
+      account: {accountId: 11, email: 'local-tester@example.com'},
+      responses: [],
+    })
+    emailCalendarResponse.mockResolvedValue({
+      responseId: 7,
+      participationStatus: 'ACCEPTED',
+      deliveryState: 'delivered',
+    })
+    confirm.mockResolvedValue()
+    const wrapper = render()
+    await flushPromises()
+
+    const accept = wrapper.get('[data-testid="calendar-rsvp-ACCEPTED"]')
+    expect(wrapper.text()).toContain('Accept')
+    await accept.trigger('click')
+    await flushPromises()
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('zoe@example.com'), expect.any(Object))
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('local-tester@example.com'), expect.any(Object))
+    expect(emailCalendarResponse).toHaveBeenCalledWith({
+      emailId: 99,
+      eventUid: 'event-1@example.com',
+      recurrenceId: null,
+      accountId: 11,
+      participationStatus: 'ACCEPTED',
+    })
+    expect(wrapper.text()).toContain('Delivered')
+  })
+
+  it('announces dispatching and exposes retry only for confirmed no-send outcomes', async () => {
+    emailCalendarEligibility.mockResolvedValue({
+      eligible: true,
+      organizer: {name: 'Zoe Example', address: 'zoe@example.com'},
+      account: {accountId: 11, email: 'local-tester@example.com'},
+      responses: [
+        {responseId: 5, participationStatus: 'TENTATIVE', deliveryState: 'retryable_no_send'},
+        {responseId: 6, participationStatus: 'DECLINED', deliveryState: 'delivery_unknown'},
+      ],
+    })
+    let resolveResponse
+    emailCalendarResponse.mockReturnValue(new Promise(resolve => {
+      resolveResponse = resolve
+    }))
+    emailCalendarResponseRetry.mockResolvedValue({
+      responseId: 5,
+      participationStatus: 'TENTATIVE',
+      deliveryState: 'delivered',
+    })
+    confirm.mockResolvedValue()
+    const wrapper = render()
+    await flushPromises()
+
+    await wrapper.get('[data-testid="calendar-rsvp-ACCEPTED"]').trigger('click')
+    await nextTick()
+    expect(wrapper.text()).toContain('Sending')
+    expect(wrapper.get('[data-testid="calendar-rsvp-ACCEPTED"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-testid="calendar-rsvp-retry-5"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="calendar-rsvp-retry-6"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('Delivery status unknown')
+
+    resolveResponse({
+      responseId: 7,
+      participationStatus: 'ACCEPTED',
+      deliveryState: 'delivered',
+    })
+    await flushPromises()
+    await wrapper.get('[data-testid="calendar-rsvp-retry-5"]').trigger('click')
+    await flushPromises()
+
+    expect(emailCalendarResponseRetry).toHaveBeenCalledWith({responseId: 5})
+    expect(wrapper.text()).toContain('Tentative: Delivered')
+  })
+
+  it('uses trusted registry output for custom providers without hard-coded host allowlists', () => {
+    const wrapper = render({
+      envelope: envelope([event({meetingLink: {
+        url: 'https://video.example.net/room/123',
+        hostname: 'video.example.net',
+        trust: 'trusted',
+        provider: 'Example Video',
+      }})]),
+    })
+
+    expect(wrapper.get('a.calendar-event__join').attributes('href')).toBe('https://video.example.net/room/123')
   })
 
   it('keeps UTC/zoned conversions explicit and never converts floating, unresolved, or all-day values', () => {

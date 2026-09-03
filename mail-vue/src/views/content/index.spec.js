@@ -31,7 +31,7 @@ let useEmailStore
 
 function calendarEnvelope() {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     parserVersion: 'ical.js/2.2.1',
     state: 'parsed',
     sources: [],
