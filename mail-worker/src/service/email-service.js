@@ -24,6 +24,7 @@ import account from "../entity/account";
 import { att } from '../entity/att';
 import telegramService from './telegram-service';
 import calendarPreviewService from './calendar-preview-service';
+import calendarResponseService from './calendar-response-service';
 
 const emailService = {
 
@@ -222,12 +223,12 @@ const emailService = {
 		const { emailIds } = params;
 		const emailIdList = emailIds.split(',').map(Number);
 		const { syncDelete } = await settingService.query(c);
+		const owned = await orm(c).select({ emailId: email.emailId }).from(email)
+			.where(and(eq(email.userId, userId), inArray(email.emailId, emailIdList)))
+			.all();
+		const ownedIds = owned.map(row => row.emailId);
 
 		if (syncDelete === settingConst.syncDelete.OPEN) {
-			const owned = await orm(c).select({ emailId: email.emailId }).from(email)
-				.where(and(eq(email.userId, userId), inArray(email.emailId, emailIdList)))
-				.all();
-			const ownedIds = owned.map(row => row.emailId);
 			if (ownedIds.length) {
 				await this.physicsDelete(c, { emailIds: ownedIds.join(',') });
 			}
@@ -239,6 +240,7 @@ const emailService = {
 				eq(email.userId, userId),
 				inArray(email.emailId, emailIdList)))
 			.run();
+		await calendarResponseService.removeByEmailIds(c, ownedIds);
 	},
 
 	receive(c, params, cidAttList, r2domain) {
@@ -857,6 +859,7 @@ const emailService = {
 		let { emailIds } = params;
 		emailIds = emailIds.split(',').map(Number);
 		await calendarPreviewService.removeGuardsByEmailIds(c, emailIds);
+		await calendarResponseService.removeByEmailIds(c, emailIds);
 		await attService.removeByEmailIds(c, emailIds);
 		await starService.removeByEmailIds(c, emailIds);
 		await orm(c).delete(email).where(inArray(email.emailId, emailIds)).run();
@@ -864,6 +867,7 @@ const emailService = {
 
 	async physicsDeleteUserIds(c, userIds) {
 		await calendarPreviewService.removeGuardsByUserIds(c, userIds);
+		await calendarResponseService.removeByUserIds(c, userIds);
 		await attService.removeByUserIds(c, userIds);
 		await orm(c).delete(email).where(inArray(email.userId, userIds)).run();
 	},
@@ -1126,11 +1130,13 @@ const emailService = {
 		}
 
 		await attService.removeByEmailIds(c, emailIds);
+		await calendarResponseService.removeByEmailIds(c, emailIds);
 
 		await orm(c).delete(email).where(conditions.length > 1 ? and(...conditions) : conditions[0]).run();
 	},
 
 	async physicsDeleteByAccountId(c, accountId) {
+		await calendarResponseService.removeByAccountId(c, accountId);
 		await attService.removeByAccountId(c, accountId);
 		await orm(c).delete(email).where(eq(email.accountId, accountId)).run();
 	},

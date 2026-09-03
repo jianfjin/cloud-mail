@@ -20,6 +20,7 @@ import {oauth} from "../entity/oauth";
 import oauthService from "./oauth-service";
 import settingService from './setting-service';
 import starService from './star-service';
+import calendarResponseService from './calendar-response-service';
 
 const userService = {
 
@@ -104,6 +105,7 @@ const userService = {
 			return;
 		}
 		await orm(c).update(user).set({ isDel: isDel.DELETE }).where(eq(user.userId, userId)).run();
+		await calendarResponseService.removeByUserIds(c, [userId]);
 		await c.env.kv.delete(kvConst.AUTH_INFO + userId)
 	},
 
