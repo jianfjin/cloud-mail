@@ -1,0 +1,163 @@
+import {beforeAll, beforeEach, describe, expect, it, vi} from 'vitest'
+import {flushPromises, mount} from '@vue/test-utils'
+import {nextTick} from 'vue'
+import {createI18n} from 'vue-i18n'
+import {createPinia, setActivePinia} from 'pinia'
+import en from '@/i18n/en.js'
+
+const emailCalendarPreview = vi.fn()
+const routerBack = vi.fn()
+
+vi.mock('element-plus', () => ({
+  ElMessage: vi.fn(),
+  ElMessageBox: {confirm: vi.fn()},
+}))
+
+vi.mock('vue-router', () => ({
+  useRouter: () => ({back: routerBack}),
+}))
+
+vi.mock('@/request/email.js', () => ({
+  emailCalendarPreview,
+  emailDelete: vi.fn(),
+  emailRead: vi.fn(),
+}))
+
+vi.mock('@/request/star.js', () => ({starAdd: vi.fn(), starCancel: vi.fn()}))
+vi.mock('@/request/all-email.js', () => ({allEmailDelete: vi.fn()}))
+
+let ContentView
+let useEmailStore
+
+function calendarEnvelope() {
+  return {
+    schemaVersion: 1,
+    parserVersion: 'ical.js/2.2.1',
+    state: 'parsed',
+    sources: [],
+    warnings: [],
+    truncated: {parts: false, events: false, envelope: false},
+    omittedPartCount: 0,
+    omittedEventCount: 0,
+    events: [{
+      uid: 'teams-1',
+      recurrenceId: null,
+      sequence: 0,
+      action: 'invitation',
+      status: 'CONFIRMED',
+      summary: 'Teams planning update',
+      description: '',
+      location: 'Online',
+      organizer: {name: 'Jianfeng Jin', address: 'jianfeng.jin@example.com'},
+      attendees: [],
+      omittedAttendeeCount: 0,
+      start: {kind: 'utc', value: '2026-09-01T08:00:00Z', timezone: 'UTC', instant: '2026-09-01T08:00:00.000Z'},
+      end: {kind: 'utc', value: '2026-09-01T09:00:00Z', timezone: 'UTC', instant: '2026-09-01T09:00:00.000Z'},
+      meetingLink: {
+        url: 'https://teams.microsoft.com/meet/123',
+        hostname: 'teams.microsoft.com',
+        trust: 'trusted',
+        provider: 'microsoft-teams',
+      },
+    }],
+  }
+}
+
+function briefEmail(overrides = {}) {
+  return {
+    emailId: 42,
+    subject: 'Teams planning update',
+    name: 'Jianfeng Jin',
+    sendEmail: 'jianfeng.jin@example.com',
+    recipient: '[]',
+    createTime: '2026-09-01 08:00:00',
+    hasCalendar: 1,
+    attList: [],
+    content: '',
+    text: '',
+    unread: 0,
+    ...overrides,
+  }
+}
+
+function mountContent(email) {
+  const pinia = createPinia()
+  setActivePinia(pinia)
+  const store = useEmailStore(pinia)
+  store.contentData.email = email
+  const i18n = createI18n({legacy: false, locale: 'en', messages: {en}})
+  const wrapper = mount(ContentView, {
+    global: {
+      plugins: [pinia, i18n],
+      directives: {perm: () => {}},
+      stubs: {
+        Icon: true,
+        ShadowHtml: true,
+        'el-alert': true,
+        'el-image-viewer': true,
+        'el-scrollbar': {template: '<div><slot /></div>'},
+      },
+    },
+  })
+  return {store, wrapper}
+}
+
+beforeAll(async () => {
+  setActivePinia(createPinia())
+  ContentView = (await import('./index.vue')).default
+  useEmailStore = (await import('@/store/email.js')).useEmailStore
+})
+
+beforeEach(() => {
+  setActivePinia(createPinia())
+  emailCalendarPreview.mockReset()
+  routerBack.mockReset()
+  localStorage.clear()
+})
+
+describe('calendar preview from selected brief email', () => {
+  it('loads a Teams card before hydration and retains the ICS attachment after hydration', async () => {
+    emailCalendarPreview.mockResolvedValue(calendarEnvelope())
+    const brief = briefEmail()
+    const {store, wrapper} = mountContent(brief)
+
+    await flushPromises()
+    expect(emailCalendarPreview).toHaveBeenCalledTimes(1)
+    expect(emailCalendarPreview).toHaveBeenCalledWith(42)
+    expect(wrapper.get('[data-testid=calendar-preview]').text()).toContain('Teams planning update')
+    expect(wrapper.get('a.calendar-event__join').attributes('href')).toBe('https://teams.microsoft.com/meet/123')
+
+    store.applyFullList([{
+      ...brief,
+      attList: [{attId: 1, key: 'mail/42/invite.ics', filename: 'invite.ics', size: 512}],
+    }])
+    await nextTick()
+
+    expect(wrapper.text()).toContain('invite.ics')
+    expect(emailCalendarPreview).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('does not request or render a calendar preview for ordinary brief email', async () => {
+    const {wrapper} = mountContent(briefEmail({emailId: 43, hasCalendar: 0}))
+
+    await flushPromises()
+
+    expect(emailCalendarPreview).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-testid=calendar-preview]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('shows the existing retry state when a marked brief email preview is unavailable', async () => {
+    emailCalendarPreview.mockRejectedValue({response: {status: 503}})
+    const {wrapper} = mountContent(briefEmail({emailId: 44}))
+
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid=calendar-preview]').text()).toContain('temporarily unavailable')
+    expect(wrapper.get('.calendar-preview__retry').text()).toBe('Retry')
+    await wrapper.get('.calendar-preview__retry').trigger('click')
+    expect(emailCalendarPreview).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+})

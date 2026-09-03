@@ -1,9 +1,12 @@
 import { env } from 'cloudflare:test';
+import { eq } from 'drizzle-orm';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import PostalMime from 'postal-mime';
 import googleMeetMessage from './fixtures/calendar/google-meet.eml?raw';
 import { prepareCalendarReceipt } from '../src/email/calendar-receipt';
 import { dbInit } from '../src/init/init';
+import orm from '../src/entity/orm';
+import email from '../src/entity/email';
 import emailService from '../src/service/email-service';
 import { emailBriefColumns, emailListColumns } from '../src/lib/email-list-columns';
 import webhookService from '../src/service/webhook-service';
@@ -109,7 +112,7 @@ describe('calendar receipt persistence', () => {
 		expect(prepared.attachments).toEqual([attachment]);
 	});
 
-	it('adds the calendar column idempotently without exposing it through list projections', async () => {
+	it('adds the calendar column idempotently and exposes only its presence through list projections', async () => {
 		const warningSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 		await dbInit.v3_5DB(c);
 		await dbInit.v3_5DB(c);
@@ -121,7 +124,27 @@ describe('calendar receipt persistence', () => {
 		expect(emailListColumns).not.toHaveProperty('calendarData');
 		expect(emailListColumns).toHaveProperty('hasCalendar');
 		expect(emailBriefColumns).not.toHaveProperty('calendarData');
-		expect(emailBriefColumns).not.toHaveProperty('hasCalendar');
+		expect(emailBriefColumns).toHaveProperty('hasCalendar');
+
+		const calendarEmail = await emailService.receive(c, {
+			accountId: 10,
+			userId: 20,
+			calendarData: JSON.stringify({state: 'parsed'}),
+		}, [], null);
+		const ordinaryEmail = await emailService.receive(c, {
+			accountId: 10,
+			userId: 20,
+		}, [], null);
+		const [fullCalendar, briefCalendar, briefOrdinary] = await Promise.all([
+			orm(c).select(emailListColumns).from(email).where(eq(email.emailId, calendarEmail.emailId)).get(),
+			orm(c).select(emailBriefColumns).from(email).where(eq(email.emailId, calendarEmail.emailId)).get(),
+			orm(c).select(emailBriefColumns).from(email).where(eq(email.emailId, ordinaryEmail.emailId)).get(),
+		]);
+
+		expect(fullCalendar).toMatchObject({hasCalendar: 1});
+		expect(briefCalendar).toMatchObject({hasCalendar: 1});
+		expect(briefOrdinary).toMatchObject({hasCalendar: 0});
+		expect(briefCalendar).not.toHaveProperty('calendarData');
 		warningSpy.mockRestore();
 	});
 

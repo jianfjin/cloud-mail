@@ -8,6 +8,14 @@ import {VitePWA} from 'vite-plugin-pwa';
 
 export default defineConfig(({mode}) => {
     const env = loadEnv(mode, process.cwd(), 'VITE')
+    const componentPlugins = mode === 'test' ? [] : [
+        AutoImport({
+            resolvers: [ElementPlusResolver()],
+        }),
+        Components({
+            resolvers: [ElementPlusResolver()],
+        }),
+    ]
     return {
         server: {
             host: true,
@@ -16,6 +24,7 @@ export default defineConfig(({mode}) => {
         },
         base: env.VITE_STATIC_URL || '/',
         plugins: [vue(),
+            ...componentPlugins,
             VitePWA({
                 injectRegister: 'script-defer',
                 manifest: {
@@ -38,12 +47,6 @@ export default defineConfig(({mode}) => {
                     navigateFallback: null,
                     cleanupOutdatedCaches: true,
                 }
-            }),
-            AutoImport({
-                resolvers: [ElementPlusResolver()],
-            }),
-            Components({
-                resolvers: [ElementPlusResolver()],
             })
         ],
         resolve: {
