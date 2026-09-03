@@ -106,6 +106,27 @@ describe('calendar RSVP responses', () => {
 		expect(send).not.toHaveBeenCalled();
 	});
 
+	it('reports eligibility only for the owned invitation and selected attendee account', async () => {
+		const eligible = await calendarResponseService.eligibility(c, {
+			emailId: 1,
+			eventUid: invitation.uid,
+			accountId: 11,
+		}, 99);
+		const ineligible = await calendarResponseService.eligibility(c, {
+			emailId: 1,
+			eventUid: invitation.uid,
+			accountId: 11,
+		}, 100);
+
+		expect(eligible).toMatchObject({
+			eligible: true,
+			organizer: {address: 'organizer@example.test'},
+			account: {accountId: 11, email: 'local-tester@example.com'},
+			responses: [],
+		});
+		expect(ineligible).toEqual({eligible: false});
+	});
+
 	it('retries only confirmed no-send responses and blocks delivery-unknown responses', async () => {
 		const send = vi.spyOn(emailService, 'send')
 			.mockRejectedValueOnce(new BizError('The configured sender rejected this message'))

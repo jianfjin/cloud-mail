@@ -230,6 +230,31 @@ const calendarResponseService = {
 		return dispatch(c, dispatching, invitation);
 	},
 
+	async eligibility(c, params, userId) {
+		try {
+			const invitation = await resolveEligibleInvitation(c, params, userId);
+			const responses = await orm(c).select().from(calendarResponse).where(and(
+				eq(calendarResponse.emailId, invitation.emailId),
+				eq(calendarResponse.eventUid, invitation.eventUid),
+				eq(calendarResponse.recurrenceId, invitation.recurrenceId),
+				eq(calendarResponse.accountId, invitation.accountId),
+				eq(calendarResponse.userId, userId),
+			)).all();
+			return {
+				eligible: true,
+				organizer: {
+					name: invitation.event.organizer?.name || '',
+					address: invitation.organizer,
+				},
+				account: {accountId: invitation.accountId, email: invitation.accountEmail},
+				responses,
+			};
+		} catch (error) {
+			if (error instanceof BizError) return {eligible: false};
+			throw error;
+		}
+	},
+
 	getByEmailId(c, emailId, userId) {
 		return orm(c).select().from(calendarResponse).where(and(
 			eq(calendarResponse.emailId, Number(emailId)),

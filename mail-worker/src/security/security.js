@@ -24,6 +24,7 @@ const exclude = [
 const requirePerms = [
 	'/email/send',
 	'/email/delete',
+	'/calendar/providers',
 	'/account/list',
 	'/account/setSignature',
 	'/account/delete',
@@ -83,7 +84,7 @@ const premKey = {
 	'all-email:query': ['/allEmail/list','/allEmail/latest'],
 	'all-email:delete': ['/allEmail/delete','/allEmail/batchDelete'],
 	'setting:query': ['/setting/query'],
-	'setting:set': ['/setting/set', '/setting/setBackground','/setting/deleteBackground','/setting/setBlacklist'],
+	'setting:set': ['/setting/set', '/setting/setBackground','/setting/deleteBackground','/setting/setBlacklist', '/calendar/providers'],
 	'analysis:query': ['/analysis/echarts'],
 	'reg-key:add': ['/regKey/add'],
 	'reg-key:query': ['/regKey/list','/regKey/history'],
@@ -93,7 +94,7 @@ const premKey = {
 app.use('*', async (c, next) => {
 
 	const path = c.req.path;
-	if (path === '/email/calendar-preview') {
+	if (path === '/email/calendar-preview' || path.startsWith('/email/calendar-response')) {
 		c.header('Cache-Control', 'private, no-store');
 	}
 

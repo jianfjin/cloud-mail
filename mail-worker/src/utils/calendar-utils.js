@@ -1,6 +1,6 @@
 import ICAL from 'ical.js';
 
-export const CALENDAR_SCHEMA_VERSION = 1;
+export const CALENDAR_SCHEMA_VERSION = 2;
 export const CALENDAR_PARSER_VERSION = 'ical.js/2.2.1';
 
 export const CALENDAR_LIMITS = Object.freeze({
@@ -19,7 +19,7 @@ export const CALENDAR_LIMITS = Object.freeze({
 });
 
 const CALENDAR_MIME_TYPES = new Set(['text/calendar', 'application/ics']);
-const TRUSTED_CONFERENCE_HOSTS = new Map([
+const KNOWN_CONFERENCE_HOSTS = new Map([
 	['meet.google.com', 'google-meet'],
 	['teams.microsoft.com', 'microsoft-teams'],
 	['teams.live.com', 'microsoft-teams'],
@@ -281,7 +281,7 @@ function urlsFromText(value) {
 	return Array.from(value.matchAll(/https?:\/\/[^\s<>"']+/gi), match => trimUrlPunctuation(match[0]));
 }
 
-function validateConferenceUrl(value, source, requireTrustedHost) {
+function validateConferenceUrl(value, source) {
 	if (typeof value !== 'string' || /[\u0000-\u001f\u007f]/.test(value)) return null;
 	if (textEncoder.encode(value).byteLength > CALENDAR_LIMITS.urlBytes) return null;
 
@@ -289,13 +289,12 @@ function validateConferenceUrl(value, source, requireTrustedHost) {
 		const url = new URL(value);
 		if (url.protocol !== 'https:' || url.username || url.password || !url.hostname) return null;
 		const hostname = url.hostname.toLowerCase();
-		const provider = TRUSTED_CONFERENCE_HOSTS.get(hostname) || null;
-		if (requireTrustedHost && !provider) return null;
+		const provider = KNOWN_CONFERENCE_HOSTS.get(hostname) || null;
 		return {
 			url: url.href,
 			hostname,
 			source,
-			trust: provider ? 'trusted' : 'unverified',
+			trust: 'unverified',
 			provider,
 		};
 	} catch (_) {
@@ -308,13 +307,13 @@ function selectMeetingLink(component, warnings, eventIdentity) {
 	for (const property of component.getAllProperties()) {
 		const propertyName = property.name.toLowerCase();
 		if (CONFERENCE_PROPERTIES.has(propertyName)) {
-			candidates.push({ value: String(property.getFirstValue() || ''), source: propertyName, requireTrustedHost: false });
+			candidates.push({ value: String(property.getFirstValue() || ''), source: propertyName });
 		}
 	}
 
 	for (const propertyName of ['url', 'location', 'description']) {
 		for (const value of urlsFromText(component.getFirstPropertyValue(propertyName))) {
-			candidates.push({ value, source: propertyName, requireTrustedHost: true });
+			candidates.push({ value, source: propertyName });
 		}
 	}
 
@@ -326,7 +325,7 @@ function selectMeetingLink(component, warnings, eventIdentity) {
 	}
 
 	for (const candidate of candidates.slice(0, CALENDAR_LIMITS.linkCandidates)) {
-		const result = validateConferenceUrl(candidate.value, candidate.source, candidate.requireTrustedHost);
+		const result = validateConferenceUrl(candidate.value, candidate.source);
 		if (result) return result;
 	}
 	return null;

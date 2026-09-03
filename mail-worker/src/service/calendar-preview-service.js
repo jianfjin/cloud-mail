@@ -11,6 +11,7 @@ import {
 	normalizeCalendarAttachments,
 } from '../utils/calendar-utils';
 import { isDel } from '../const/entity-const';
+import calendarProviderService from './calendar-provider-service';
 
 const MAX_ATTEMPTS_PER_MINUTE = 3;
 const RETRY_COOLDOWN_SECONDS = 30;
@@ -120,6 +121,10 @@ async function persistCanonical(c, row, userId, envelope) {
 		: null;
 }
 
+async function presentEnvelope(c, envelope) {
+	return calendarProviderService.applyTrust(c, envelope);
+}
+
 const calendarPreviewService = {
 	async removeGuardsByEmailIds(c, emailIds) {
 		if (!emailIds.length) return;
@@ -145,7 +150,7 @@ const calendarPreviewService = {
 		const row = await ownedEmail(c, emailId, userId);
 		if (!row) return { status: 'not_found' };
 		if (isCurrentCalendarEnvelope(row.calendarData)) {
-			return { status: 'ok', envelope: decodeCalendarEnvelope(row.calendarData) };
+			return { status: 'ok', envelope: await presentEnvelope(c, decodeCalendarEnvelope(row.calendarData)) };
 		}
 		if (!await consumeBudget(c, emailId, userId)) return { status: 'rate_limited' };
 
@@ -155,13 +160,13 @@ const calendarPreviewService = {
 				const envelope = createCalendarFallback('calendar_attachment_unavailable', 'unsupported');
 				const canonical = await persistCanonical(c, row, userId, envelope);
 				await clearBudget(c, emailId, userId);
-				return canonical ? { status: 'ok', envelope: canonical } : { status: 'not_found' };
+				return canonical ? { status: 'ok', envelope: await presentEnvelope(c, canonical) } : { status: 'not_found' };
 			}
 			if (parts.some(part => Number(part.size) > CALENDAR_LIMITS.contentBytes)) {
 				const envelope = createCalendarFallback('calendar_content_too_large');
 				const canonical = await persistCanonical(c, row, userId, envelope);
 				await clearBudget(c, emailId, userId);
-				return canonical ? { status: 'ok', envelope: canonical } : { status: 'not_found' };
+				return canonical ? { status: 'ok', envelope: await presentEnvelope(c, canonical) } : { status: 'not_found' };
 			}
 
 			const attachments = [];
@@ -172,7 +177,7 @@ const calendarPreviewService = {
 					const envelope = createCalendarFallback('calendar_content_too_large');
 					const canonical = await persistCanonical(c, row, userId, envelope);
 					await clearBudget(c, emailId, userId);
-					return canonical ? { status: 'ok', envelope: canonical } : { status: 'not_found' };
+					return canonical ? { status: 'ok', envelope: await presentEnvelope(c, canonical) } : { status: 'not_found' };
 				}
 				attachments.push({
 					content,
@@ -186,12 +191,12 @@ const calendarPreviewService = {
 				|| createCalendarFallback('calendar_attachment_unavailable', 'unsupported');
 			const canonical = await persistCanonical(c, row, userId, envelope);
 			await clearBudget(c, emailId, userId);
-			return canonical ? { status: 'ok', envelope: canonical } : { status: 'not_found' };
+			return canonical ? { status: 'ok', envelope: await presentEnvelope(c, canonical) } : { status: 'not_found' };
 		} catch (_) {
 			await startCooldown(c, emailId, userId);
 			return {
 				status: 'retryable',
-				envelope: createCalendarFallback('calendar_storage_unavailable'),
+				envelope: await presentEnvelope(c, createCalendarFallback('calendar_storage_unavailable')),
 			};
 		}
 	},

@@ -78,7 +78,7 @@ describe('calendar attachment normalization', () => {
 				meetingLink: {
 					hostname: 'meet.google.com',
 					provider: 'google-meet',
-					trust: 'trusted',
+					trust: 'unverified',
 				},
 			}],
 		});
@@ -96,7 +96,7 @@ describe('calendar attachment normalization', () => {
 				meetingLink: {
 					hostname: 'teams.microsoft.com',
 					provider: 'microsoft-teams',
-					trust: 'trusted',
+					trust: 'unverified',
 				},
 			}],
 		});
@@ -234,7 +234,7 @@ describe('calendar attachment normalization', () => {
 		expect(await normalizeCalendarAttachments([{ mimeType: 'text/plain', content: encode('ordinary mail') }])).toBeNull();
 	});
 
-	it('selects only safe conference links without fetching or trusting lookalike hosts', async () => {
+	it('retains safe unverified conference links without fetching or trusting lookalike hosts', async () => {
 		const fetchSpy = vi.spyOn(globalThis, 'fetch');
 		const unsafe = event({ extra: [
 			'CONFERENCE:https://user:pass@example.com/join',
@@ -256,10 +256,10 @@ describe('calendar attachment normalization', () => {
 		const result = await normalizeCalendarAttachments([calendarPart(calendar([unsafe, lookalike, unverified, trustedTeams]))]);
 		const byUid = Object.fromEntries(result.events.map(item => [item.uid, item]));
 
-		expect(byUid['event-1@example.com'].meetingLink).toBeNull();
+		expect(byUid['event-1@example.com'].meetingLink).toMatchObject({ hostname: 'meet.google.com.evil.example', trust: 'unverified', provider: null });
 		expect(byUid.lookalike.meetingLink).toMatchObject({ hostname: 'meet.google.com.evil.example', trust: 'unverified', provider: null });
 		expect(byUid.unverified.meetingLink).toMatchObject({ hostname: 'video.example.net', trust: 'unverified', provider: null });
-		expect(byUid.teams.meetingLink).toMatchObject({ hostname: 'teams.live.com', trust: 'trusted', provider: 'microsoft-teams' });
+		expect(byUid.teams.meetingLink).toMatchObject({ hostname: 'teams.live.com', trust: 'unverified', provider: 'microsoft-teams' });
 		expect(fetchSpy).not.toHaveBeenCalled();
 		fetchSpy.mockRestore();
 	});

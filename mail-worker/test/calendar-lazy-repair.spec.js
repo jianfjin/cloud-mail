@@ -10,6 +10,7 @@ import settingService from '../src/service/setting-service';
 import app from '../src/hono/webs';
 import jwtUtils from '../src/utils/jwt-utils';
 import KvConst from '../src/const/kv-const';
+import calendarResponseService from '../src/service/calendar-response-service';
 
 const c = { env };
 const encode = value => new TextEncoder().encode(value);
@@ -28,6 +29,12 @@ const invitation = [
 ].join('\r\n');
 
 async function resetSchema() {
+	await env.db.prepare('DROP TABLE IF EXISTS role_perm').run();
+	await env.db.prepare('DROP TABLE IF EXISTS perm').run();
+	await env.db.prepare('DROP TABLE IF EXISTS role').run();
+	await env.db.prepare('DROP TABLE IF EXISTS user').run();
+	await env.db.prepare('DROP TABLE IF EXISTS calendar_response').run();
+	await env.db.prepare('DROP TABLE IF EXISTS calendar_provider').run();
 	await env.db.prepare('DROP TABLE IF EXISTS calendar_repair_guard').run();
 	await env.db.prepare('DROP TABLE IF EXISTS attachments').run();
 	await env.db.prepare('DROP TABLE IF EXISTS email').run();
@@ -52,6 +59,11 @@ async function resetSchema() {
 		)
 	`).run();
 	await dbInit.v3_5DB(c);
+	await dbInit.v3_6DB(c);
+	await env.db.prepare('CREATE TABLE user (user_id INTEGER PRIMARY KEY, type INTEGER NOT NULL)').run();
+	await env.db.prepare('CREATE TABLE role (role_id INTEGER PRIMARY KEY)').run();
+	await env.db.prepare('CREATE TABLE role_perm (role_id INTEGER, perm_id INTEGER)').run();
+	await env.db.prepare('CREATE TABLE perm (perm_id INTEGER PRIMARY KEY, perm_key TEXT, type INTEGER)').run();
 }
 
 async function insertEmail(emailId, userId, { deleted = false, calendarData = null } = {}) {
@@ -93,6 +105,18 @@ async function authorizationHeader(userId = 101) {
 	return { Authorization: token, 'Content-Type': 'application/json' };
 }
 
+async function adminAuthorizationHeader() {
+	const userId = 1;
+	const sessionToken = 'admin-session';
+	const token = await jwtUtils.generateToken(c, {userId, token: sessionToken});
+	await env.kv.put(KvConst.AUTH_INFO + userId, JSON.stringify({
+		tokens: [sessionToken],
+		user: {userId, email: 'admin@example.com'},
+		refreshTime: new Date().toISOString(),
+	}));
+	return {Authorization: token, 'Content-Type': 'application/json'};
+}
+
 describe('historical calendar invitation repair', () => {
 	beforeEach(resetSchema);
 
@@ -104,12 +128,12 @@ describe('historical calendar invitation repair', () => {
 		const first = await calendarPreviewService.getPreview(c, { emailId: 1, userId: 101, objectService: storage });
 		const second = await calendarPreviewService.getPreview(c, { emailId: 1, userId: 101, objectService: storage });
 
-		expect(first).toMatchObject({ status: 'ok', envelope: { events: [{ summary: 'Legacy planning call' }] } });
+		expect(first).toMatchObject({ status: 'ok', envelope: { events: [{ summary: 'Legacy planning call', meetingLink: {trust: 'trusted', provider: 'google-meet'} }] } });
 		expect(second).toEqual(first);
 		expect(storage.getObj).toHaveBeenCalledTimes(1);
 		expect(storage.getObj).toHaveBeenCalledWith(c, 'attachments/1.ics', { maxBytes: CALENDAR_LIMITS.contentBytes + 1 });
 		const stored = await env.db.prepare('SELECT calendar_data FROM email WHERE email_id = 1').first();
-		expect(JSON.parse(stored.calendar_data)).toEqual(first.envelope);
+		expect(JSON.parse(stored.calendar_data)).toMatchObject({events: [{meetingLink: {trust: 'unverified', provider: 'google-meet'}}]});
 	});
 
 	it('returns the same not-found result for missing, foreign, and deleted messages without reading objects', async () => {
@@ -270,5 +294,39 @@ describe('historical calendar invitation repair', () => {
 		expect(await missing.json()).toEqual({ code: 404, message: 'Not found' });
 		expect(missing.headers.get('Cache-Control')).toBe('private, no-store');
 		logSpy.mockRestore();
+	});
+
+	it('binds RSVP mutations to the authenticated user and restricts provider administration', async () => {
+		const respond = vi.spyOn(calendarResponseService, 'respond').mockResolvedValue({responseId: 7, deliveryState: 'delivered'});
+		const recipientHeaders = await authorizationHeader(202);
+		const response = await app.request('/email/calendar-response', {
+			method: 'POST',
+			headers: recipientHeaders,
+			body: JSON.stringify({emailId: 1, eventUid: 'event-1', accountId: 11, participationStatus: 'ACCEPTED'}),
+		}, env);
+		expect(await response.json()).toMatchObject({code: 200, data: {responseId: 7}});
+		expect(respond).toHaveBeenCalledWith(expect.anything(), {
+			emailId: 1, eventUid: 'event-1', accountId: 11, participationStatus: 'ACCEPTED',
+		}, 202);
+
+		await env.db.prepare('INSERT INTO user (user_id, type) VALUES (202, 1)').run();
+		const denied = await app.request('/calendar/providers', {headers: recipientHeaders}, env);
+		expect((await denied.json()).code).toBe(403);
+
+		const adminHeaders = await adminAuthorizationHeader();
+		const created = await app.request('/calendar/providers', {
+			method: 'POST',
+			headers: adminHeaders,
+			body: JSON.stringify({host: 'video.example.net', label: 'Example Video'}),
+		}, env);
+		const createdBody = await created.json();
+		expect(createdBody).toMatchObject({code: 200, data: {host: 'video.example.net', enabled: 1}});
+
+		const updated = await app.request('/calendar/providers/' + createdBody.data.providerId, {
+			method: 'PUT',
+			headers: adminHeaders,
+			body: JSON.stringify({enabled: false}),
+		}, env);
+		expect(await updated.json()).toMatchObject({code: 200, data: {enabled: 0}});
 	});
 });
