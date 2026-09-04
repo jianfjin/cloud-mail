@@ -263,6 +263,8 @@ describe('calendar invitation', () => {
     expect(loading.text()).toContain('Loading invitation details')
 
     const retryable = render({envelope: null, requestState: 'retryable'})
+    expect(retryable.get('h2').text()).toBe('Invitation details are temporarily unavailable.')
+    expect(retryable.get('h2').text()).not.toBe('0 calendar events')
     await retryable.get('button').trigger('click')
     expect(retryable.emitted('retry')).toHaveLength(1)
 

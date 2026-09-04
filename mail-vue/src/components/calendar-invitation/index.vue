@@ -284,9 +284,12 @@ watch(
   {immediate: true},
 )
 
-const heading = computed(() => events.value.length === 1
-  ? events.value[0].summary || t('calendarUntitledEvent')
-  : t('calendarEvents', {count: events.value.length}))
+const heading = computed(() => {
+  if (props.requestState === 'retryable') return t('calendarTemporarilyUnavailable')
+  return events.value.length === 1
+    ? events.value[0].summary || t('calendarUntitledEvent')
+    : t('calendarEvents', {count: events.value.length})
+})
 
 function personLabel(person) {
   if (person.name && person.address) return `${person.name} <${person.address}>`
