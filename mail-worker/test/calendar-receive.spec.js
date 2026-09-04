@@ -86,6 +86,57 @@ describe('calendar receipt persistence', () => {
 		expect(JSON.parse(row.calendarData)).toMatchObject({ events: [{ uid: 'google-meet-1@example.com' }] });
 	});
 
+	it('locally delivers a calendar invitation from a reserved test sender to local-tester@example.com', async () => {
+		const message = [
+			'From: Calendar Sender <calendar-sender@example.test>',
+			'To: local-tester@example.com',
+			'Subject: Local calendar invitation',
+			'MIME-Version: 1.0',
+			'Content-Type: text/calendar; charset=UTF-8; method=REQUEST',
+			'',
+			'BEGIN:VCALENDAR',
+			'VERSION:2.0',
+			'METHOD:REQUEST',
+			'BEGIN:VEVENT',
+			'UID:local-calendar-invitation@example.test',
+			'DTSTART:20260905T100000Z',
+			'DTEND:20260905T103000Z',
+			'SUMMARY:Local calendar invitation',
+			'ORGANIZER:mailto:calendar-sender@example.test',
+			'ATTENDEE:mailto:local-tester@example.com',
+			'END:VEVENT',
+			'END:VCALENDAR',
+		].join('\r\n');
+		const parsed = await PostalMime.parse(message);
+		const prepared = await prepareCalendarReceipt(parsed);
+
+		await dbInit.v3_5DB(c);
+		const row = await emailService.receive(c, {
+			accountId: 10,
+			userId: 20,
+			toEmail: 'local-tester@example.com',
+			toName: 'Local Tester',
+			sendEmail: parsed.from.address,
+			name: parsed.from.name,
+			subject: parsed.subject,
+			calendarData: prepared.calendarData,
+		}, [], null);
+
+		expect(row).toMatchObject({
+			toEmail: 'local-tester@example.com',
+			sendEmail: 'calendar-sender@example.test',
+			subject: 'Local calendar invitation',
+		});
+		expect(JSON.parse(row.calendarData)).toMatchObject({
+			state: 'parsed',
+			events: [{
+				uid: 'local-calendar-invitation@example.test',
+				action: 'invitation',
+				summary: 'Local calendar invitation',
+			}],
+		});
+	});
+
 	it('keeps ordinary bodies and calendar bytes while making malformed input non-fatal', async () => {
 		const content = new TextEncoder().encode('BEGIN:VCALENDAR\r\nBROKEN');
 		const parsed = {

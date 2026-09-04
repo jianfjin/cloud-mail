@@ -15,3 +15,4 @@ id = "9be10cd058e04c55b526f8c0c116f50c"
 orm_log = false
 jwt_secret = "calendar-test-secret"
 admin = "admin@example.com"
+domain = ["example.com"]
