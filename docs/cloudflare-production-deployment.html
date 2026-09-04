@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Cloud Mail production Cloudflare deployment and JWT secret runbook.">
+  <title>Cloud Mail | Cloudflare Production Deployment</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17212b;
+      --muted: #5c6875;
+      --line: #d7dde3;
+      --canvas: #f5f7f8;
+      --surface: #ffffff;
+      --accent: #087f72;
+      --accent-soft: #e4f2f0;
+      --warning: #9b5a00;
+      --warning-soft: #fff5dd;
+      --code: #15202b;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      background: var(--canvas);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration-thickness: 1px;
+      text-underline-offset: 3px;
+    }
+
+    a:hover { color: #065d54; }
+
+    code, pre {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    }
+
+    code {
+      padding: 0.12rem 0.3rem;
+      border-radius: 3px;
+      background: #edf1f3;
+      color: #273744;
+      font-size: 0.9em;
+    }
+
+    .masthead {
+      border-bottom: 1px solid var(--line);
+      background: var(--surface);
+    }
+
+    .masthead-inner,
+    .layout {
+      width: min(1180px, calc(100% - 48px));
+      margin: 0 auto;
+    }
+
+    .masthead-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      min-height: 68px;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--ink);
+      font-size: 0.94rem;
+      font-weight: 720;
+      letter-spacing: 0;
+      text-decoration: none;
+    }
+
+    .brand-mark {
+      display: grid;
+      width: 28px;
+      height: 28px;
+      place-items: center;
+      border-radius: 5px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.78rem;
+      font-weight: 800;
+    }
+
+    .scope {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.83rem;
+      white-space: nowrap;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 230px minmax(0, 1fr);
+      gap: 64px;
+      padding: 48px 0 72px;
+    }
+
+    .toc {
+      align-self: start;
+      position: sticky;
+      top: 24px;
+      border-left: 1px solid var(--line);
+      padding-left: 18px;
+    }
+
+    .toc-title {
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 750;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .toc a {
+      display: block;
+      padding: 4px 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+      text-decoration: none;
+    }
+
+    .toc a:hover { color: var(--accent); }
+
+    main { min-width: 0; }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      color: var(--accent);
+      font-size: 0.74rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1, h2, h3 {
+      color: var(--ink);
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      max-width: 760px;
+      margin: 0;
+      font-size: clamp(2rem, 4vw, 3.15rem);
+      font-weight: 760;
+    }
+
+    .lede {
+      max-width: 710px;
+      margin: 18px 0 0;
+      color: var(--muted);
+      font-size: 1.08rem;
+    }
+
+    section {
+      max-width: 800px;
+      margin-top: 56px;
+      scroll-margin-top: 28px;
+    }
+
+    h2 {
+      margin: 0 0 18px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--line);
+      font-size: 1.45rem;
+      font-weight: 740;
+    }
+
+    h3 {
+      margin: 28px 0 10px;
+      font-size: 1.05rem;
+      font-weight: 730;
+    }
+
+    p { margin: 0 0 16px; }
+
+    ul, ol {
+      margin: 0 0 18px;
+      padding-left: 1.35rem;
+    }
+
+    li { margin: 7px 0; }
+
+    .binding {
+      display: grid;
+      grid-template-columns: minmax(140px, 0.65fr) minmax(0, 1.35fr);
+      margin: 22px 0;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .binding > div {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .binding > div:nth-last-child(-n + 2) { border-bottom: 0; }
+    .binding .label { background: #f0f3f5; color: var(--muted); font-weight: 700; }
+
+    pre {
+      overflow-x: auto;
+      margin: 18px 0;
+      padding: 18px 20px;
+      border: 1px solid #233442;
+      border-radius: 5px;
+      background: var(--code);
+      color: #e7f0f5;
+      font-size: 0.88rem;
+      line-height: 1.6;
+    }
+
+    pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font-size: inherit;
+    }
+
+    .callout {
+      margin: 24px 0;
+      padding: 16px 18px;
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+    }
+
+    .callout p:last-child { margin-bottom: 0; }
+
+    .callout.warning {
+      border-left-color: var(--warning);
+      background: var(--warning-soft);
+    }
+
+    .callout strong { color: inherit; }
+
+    .checklist {
+      padding: 0;
+      list-style: none;
+    }
+
+    .checklist li {
+      display: grid;
+      grid-template-columns: 18px minmax(0, 1fr);
+      gap: 9px;
+      align-items: start;
+    }
+
+    .checklist li::before {
+      content: "";
+      width: 13px;
+      height: 13px;
+      margin-top: 0.42em;
+      border: 1.5px solid var(--accent);
+      border-radius: 2px;
+    }
+
+    footer {
+      max-width: 800px;
+      margin-top: 56px;
+      padding-top: 20px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.84rem;
+    }
+
+    @media (max-width: 780px) {
+      .masthead-inner,
+      .layout { width: min(100% - 32px, 680px); }
+      .masthead-inner { min-height: 58px; }
+      .scope { display: none; }
+      .layout { display: block; padding-top: 32px; }
+      .toc {
+        position: static;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 18px;
+        margin-bottom: 38px;
+      }
+      .toc-title { width: 100%; }
+      .toc a { padding: 0; }
+      section { margin-top: 42px; }
+      .binding { grid-template-columns: 1fr; }
+      .binding > div { border-bottom: 0; }
+      .binding .label { padding-bottom: 4px; }
+      .binding .value { padding-top: 4px; border-bottom: 1px solid var(--line); }
+      .binding > div:last-child { border-bottom: 0; }
+    }
+
+    @media print {
+      body { background: #fff; }
+      .masthead { border-bottom: 0; }
+      .toc { display: none; }
+      .layout { display: block; width: 100%; padding: 0; }
+      section { break-inside: avoid; }
+      pre { white-space: pre-wrap; }
+    }
+  </style>
+</head>
+<body>
+  <header class="masthead">
+    <div class="masthead-inner">
+      <a class="brand" href="#top" aria-label="Cloud Mail deployment runbook">
+        <span class="brand-mark" aria-hidden="true">CM</span>
+        <span>Cloud Mail</span>
+      </a>
+      <p class="scope">Production operations runbook</p>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav class="toc" aria-label="Contents">
+      <p class="toc-title">On this page</p>
+      <a href="#secret">JWT secret</a>
+      <a href="#rotation">Create or rotate</a>
+      <a href="#deploy">Deploy</a>
+      <a href="#recovery">Recovery</a>
+    </nav>
+
+    <main id="top">
+      <p class="eyebrow">Cloudflare Workers</p>
+      <h1>Production Deployment</h1>
+      <p class="lede">Operating procedure for the <code>cloud-mail</code> Worker at <a href="https://mail.edmf.nl">mail.edmf.nl</a>, including the JWT signing secret used by every authenticated session.</p>
+
+      <section id="secret">
+        <h2>JWT Secret</h2>
+        <p><code>jwt_secret</code> is an encrypted Cloudflare Worker secret, exposed at runtime as <code>env.jwt_secret</code>. It signs and verifies every login JWT.</p>
+
+        <div class="binding" aria-label="Production secret binding">
+          <div class="label">Worker</div>
+          <div class="value"><code>cloud-mail</code></div>
+          <div class="label">Binding</div>
+          <div class="value"><code>jwt_secret</code></div>
+          <div class="label">Cloudflare type</div>
+          <div class="value"><code>secret_text</code></div>
+          <div class="label">Public host</div>
+          <div class="value"><code>mail.edmf.nl</code></div>
+        </div>
+
+        <ul>
+          <li>Cloudflare stores the value encrypted and never displays it after upload.</li>
+          <li>The secret belongs to the Worker, not the machine running Wrangler.</li>
+          <li>A normal deployment preserves encrypted Worker secrets.</li>
+          <li>Never add the value to <code>wrangler.production.toml</code>, <code>.env</code>, shell history, or Git.</li>
+        </ul>
+
+        <p>Check that the binding exists without exposing its value:</p>
+        <pre><code>cd ~/projects/cloud-mail/mail-worker
+npx wrangler secret list --config wrangler.production.toml</code></pre>
+        <p>The output must include <code>jwt_secret</code> with type <code>secret_text</code>.</p>
+      </section>
+
+      <section id="rotation">
+        <h2>Create or Rotate the Secret</h2>
+        <div class="callout warning">
+          <p><strong>Session impact:</strong> changing <code>jwt_secret</code> immediately invalidates all active browser sessions. Users must sign in again.</p>
+        </div>
+
+        <ol>
+          <li>Generate a new value, then save the displayed value in the password manager before continuing.</li>
+        </ol>
+        <pre><code>openssl rand -hex 48</code></pre>
+
+        <ol start="2">
+          <li>Upload that exact value interactively. This avoids accidentally uploading an empty secret through a shell pipeline.</li>
+        </ol>
+        <pre><code>npx wrangler secret put jwt_secret --config wrangler.production.toml</code></pre>
+
+        <ol start="3">
+          <li>Paste the generated value at Wrangler's prompt.</li>
+          <li>Verify its name appears in <code>wrangler secret list</code>.</li>
+          <li>Use a fresh browser session to test sign-in.</li>
+        </ol>
+
+        <div class="callout">
+          <p><strong>No extra deploy is required for a secret-only change.</strong> <code>wrangler secret put</code> publishes the updated Worker version itself.</p>
+        </div>
+      </section>
+
+      <section id="deploy">
+        <h2>Deployment Procedure</h2>
+        <ol>
+          <li>Authenticate Wrangler to the Cloudflare account that owns <code>cloud-mail</code>. Use <code>wrangler login</code> or an appropriately scoped <code>CLOUDFLARE_API_TOKEN</code>.</li>
+          <li>Confirm <code>jwt_secret</code> is listed as a Worker secret.</li>
+          <li>Build and inspect the production package without publishing it.</li>
+        </ol>
+        <pre><code>npx wrangler deploy --dry-run --config wrangler.production.toml</code></pre>
+
+        <ol start="4">
+          <li>Deploy the Worker and frontend assets.</li>
+        </ol>
+        <pre><code>npx wrangler deploy --config wrangler.production.toml</code></pre>
+
+        <ol start="5">
+          <li>Hard-refresh <a href="https://mail.edmf.nl">mail.edmf.nl</a> and test sign-in.</li>
+          <li>For mail-related changes, send a controlled message and confirm the expected mailbox record is created.</li>
+        </ol>
+
+        <div class="callout warning">
+          <p><strong>Configuration differences:</strong> before accepting Wrangler's remote-configuration prompt, verify the local production file declares the intended D1, KV, R2, AI, assets, cron, variables, and custom-domain configuration. Continuing replaces the remote configuration with the local version.</p>
+        </div>
+      </section>
+
+      <section id="recovery">
+        <h2>Empty HMAC Key Recovery</h2>
+        <p>The following error means the active Worker received an empty <code>jwt_secret</code> value:</p>
+        <pre><code>Imported HMAC key length (0) must be a non-zero value</code></pre>
+
+        <ol class="checklist">
+          <li>Run <code>wrangler secret list --config wrangler.production.toml</code>.</li>
+          <li>If <code>jwt_secret</code> is absent, create it using the interactive procedure above.</li>
+          <li>If the name is present but the error persists, rotate it interactively. A secret binding can exist with an empty value.</li>
+          <li>Wait briefly for the published version, hard-refresh the site, and sign in again.</li>
+          <li>Confirm in the Cloudflare dashboard that <code>mail.edmf.nl</code> maps to the <code>cloud-mail</code> production Worker.</li>
+        </ol>
+
+        <p>Cloudflare cannot recover a previously uploaded secret value. If the value was not saved when it was created, rotate it and store the replacement in the password manager.</p>
+      </section>
+
+      <footer>
+        Operational document for Cloud Mail production. This document intentionally contains no secret value.
+      </footer>
+    </main>
+  </div>
+</body>
+</html>
