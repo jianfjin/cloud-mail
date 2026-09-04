@@ -62,6 +62,9 @@ const requirePerms = [
 	'/regKey/delete',
 	'/regKey/clearNotUse',
 	'/regKey/history'
+	,
+	'/mailingList/list',
+	'/mailingList/report'
 ];
 
 const premKey = {
@@ -90,6 +93,7 @@ const premKey = {
 	'reg-key:add': ['/regKey/add'],
 	'reg-key:query': ['/regKey/list','/regKey/history'],
 	'reg-key:delete': ['/regKey/delete','/regKey/clearNotUse'],
+	'mailing-list:manage': ['/mailingList/list', '/mailingList/report'],
 };
 
 app.use('*', async (c, next) => {
@@ -171,7 +175,7 @@ app.use('*', async (c, next) => {
 	return await next();
 });
 
-function permKeyToPaths(permKeys) {
+export function permKeyToPaths(permKeys) {
 
 	const paths = [];
 

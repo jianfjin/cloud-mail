@@ -67,6 +67,9 @@ export const setting = sqliteTable('setting', {
 	webhookUrl: text('webhook_url').default('').notNull(),
 	webhookStatus: integer('webhook_status').default(1).notNull(),
 	webhookRetry: integer('webhook_retry').default(0).notNull(),
-	webhookSecret: text('webhook_secret').default('').notNull()
+	webhookSecret: text('webhook_secret').default('').notNull(),
+	mailingListMemberLimit: integer('mailing_list_member_limit').default(500).notNull(),
+	mailingListDailyPostLimit: integer('mailing_list_daily_post_limit').default(100).notNull(),
+	mailingListReportRetentionDays: integer('mailing_list_report_retention_days').default(30).notNull()
 });
 export default setting

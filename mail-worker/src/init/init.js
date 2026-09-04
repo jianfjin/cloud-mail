@@ -35,8 +35,37 @@ const dbInit = {
 		await this.v3_4DB(c);
 		await this.v3_5DB(c);
 		await this.v3_6DB(c);
+		await this.v3_7DB(c);
 		await settingService.refresh(c);
 		return c.text('success');
+	},
+
+	async v3_7DB(c) {
+		for (const query of [
+			'ALTER TABLE setting ADD COLUMN mailing_list_member_limit INTEGER NOT NULL DEFAULT 500',
+			'ALTER TABLE setting ADD COLUMN mailing_list_daily_post_limit INTEGER NOT NULL DEFAULT 100',
+			'ALTER TABLE setting ADD COLUMN mailing_list_report_retention_days INTEGER NOT NULL DEFAULT 30',
+		]) {
+			try {
+				await c.env.db.prepare(query).run();
+			} catch (e) {
+				console.warn('Skipping mailing-list setting column: ' + e.message);
+			}
+		}
+		await c.env.db.batch([
+			c.env.db.prepare(`CREATE TABLE IF NOT EXISTS mailing_list (list_id INTEGER PRIMARY KEY AUTOINCREMENT, address TEXT NOT NULL, address_normalized TEXT NOT NULL, display_name TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'enabled', posting_policy TEXT NOT NULL DEFAULT 'members', reply_policy TEXT NOT NULL DEFAULT 'sender', self_delivery INTEGER NOT NULL DEFAULT 1, member_limit INTEGER, daily_post_limit INTEGER, create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`),
+			c.env.db.prepare(`CREATE TABLE IF NOT EXISTS mailing_list_member (member_id INTEGER PRIMARY KEY AUTOINCREMENT, list_id INTEGER NOT NULL, email TEXT NOT NULL, email_normalized TEXT NOT NULL, create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`),
+			c.env.db.prepare(`CREATE TABLE IF NOT EXISTS mailing_list_sender (sender_id INTEGER PRIMARY KEY AUTOINCREMENT, list_id INTEGER NOT NULL, email TEXT NOT NULL, email_normalized TEXT NOT NULL, create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`),
+			c.env.db.prepare(`CREATE TABLE IF NOT EXISTS mailing_list_daily_quota (list_id INTEGER NOT NULL, utc_day TEXT NOT NULL, accepted_count INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (list_id, utc_day))`),
+			c.env.db.prepare(`CREATE TABLE IF NOT EXISTS mailing_list_post (post_id INTEGER PRIMARY KEY AUTOINCREMENT, list_id INTEGER NOT NULL, source_fingerprint TEXT NOT NULL, sender_email TEXT NOT NULL, policy_snapshot TEXT NOT NULL, source_r2_key TEXT NOT NULL DEFAULT '', state TEXT NOT NULL DEFAULT 'accepted', create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (list_id, source_fingerprint))`),
+			c.env.db.prepare(`CREATE TABLE IF NOT EXISTS mailing_list_delivery (delivery_id INTEGER PRIMARY KEY AUTOINCREMENT, post_id INTEGER NOT NULL, email TEXT NOT NULL, email_normalized TEXT NOT NULL, target_type TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'pending', dispatch_token TEXT NOT NULL DEFAULT '', safe_reason TEXT NOT NULL DEFAULT '', create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (post_id, email_normalized))`),
+			c.env.db.prepare(`CREATE TABLE IF NOT EXISTS mailing_list_delivery_attempt (attempt_id INTEGER PRIMARY KEY AUTOINCREMENT, delivery_id INTEGER NOT NULL, attempt_number INTEGER NOT NULL, trigger_type TEXT NOT NULL, state TEXT NOT NULL, safe_reason TEXT NOT NULL DEFAULT '', create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (delivery_id, attempt_number))`),
+			c.env.db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_mailing_list_address_nocase ON mailing_list(address_normalized COLLATE NOCASE)`),
+			c.env.db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_mailing_list_member_nocase ON mailing_list_member(list_id, email_normalized COLLATE NOCASE)`),
+			c.env.db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_mailing_list_sender_nocase ON mailing_list_sender(list_id, email_normalized COLLATE NOCASE)`),
+			c.env.db.prepare(`CREATE INDEX IF NOT EXISTS idx_mailing_list_delivery_state ON mailing_list_delivery(post_id, state)`),
+		]);
+		await c.env.db.prepare(`INSERT INTO perm (name, perm_key, pid, type, sort) SELECT '邮件列表管理', 'mailing-list:manage', 0, 2, 7 WHERE NOT EXISTS (SELECT 1 FROM perm WHERE perm_key = 'mailing-list:manage')`).run();
 	},
 
 	async v3_6DB(c) {
