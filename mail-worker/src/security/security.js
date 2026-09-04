@@ -63,8 +63,7 @@ const requirePerms = [
 	'/regKey/clearNotUse',
 	'/regKey/history'
 	,
-	'/mailingList/list',
-	'/mailingList/report'
+	'/mailingList/'
 ];
 
 const premKey = {
@@ -93,7 +92,7 @@ const premKey = {
 	'reg-key:add': ['/regKey/add'],
 	'reg-key:query': ['/regKey/list','/regKey/history'],
 	'reg-key:delete': ['/regKey/delete','/regKey/clearNotUse'],
-	'mailing-list:manage': ['/mailingList/list', '/mailingList/report'],
+	'mailing-list:manage': ['/mailingList/'],
 };
 
 app.use('*', async (c, next) => {

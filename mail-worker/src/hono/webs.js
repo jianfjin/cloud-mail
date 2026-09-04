@@ -21,4 +21,5 @@ import '../api/public-api'
 import '../api/telegram-api'
 import '../api/oauth-api'
 import '../api/calendar-api'
+import '../api/mailing-list-api'
 export default app;

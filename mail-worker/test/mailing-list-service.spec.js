@@ -25,4 +25,16 @@ describe('mailing-list administration', () => {
 		await env.db.prepare('INSERT INTO account (account_id, email) VALUES (1, \'box@example.com\')').run();
 		await expect(mailingListService.create(c, {address: 'BOX@example.com', displayName: 'Mailbox'})).rejects.toThrow();
 	});
+
+	it('adds normalized direct members up to the effective cap and preserves retired addresses', async () => {
+		const list = await mailingListService.create(c, {address: 'team@example.com', displayName: 'Team', memberLimit: 1});
+		await mailingListService.addMember(c, list.list_id, 'Member@outside.test');
+		await expect(mailingListService.addMember(c, list.list_id, 'member@outside.test')).rejects.toThrow();
+		await expect(mailingListService.addMember(c, list.list_id, 'other@outside.test')).rejects.toThrow();
+
+		await mailingListService.retire(c, list.list_id);
+		await expect(mailingListService.create(c, {address: 'TEAM@example.com', displayName: 'Replacement'})).rejects.toThrow();
+		await mailingListService.restore(c, list.list_id);
+		expect((await mailingListService.detail(c, list.list_id)).state).toBe('enabled');
+	});
 });
