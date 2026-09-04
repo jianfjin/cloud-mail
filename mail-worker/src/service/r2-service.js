@@ -81,6 +81,24 @@ const r2Service = {
 			await s3Service.deleteObj(c, key);
 		}
 
+	},
+
+	async toObjResp(c, key) {
+		const obj = await this.getObj(c, key);
+		if (!obj) {
+			return new Response('Not Found', { status: 404 });
+		}
+		if (obj instanceof Response) {
+			return obj;
+		}
+		// R2Object
+		return new Response(obj.body, {
+			headers: {
+				'Content-Type': obj.httpMetadata?.contentType || 'application/octet-stream',
+				'Content-Disposition': obj.httpMetadata?.contentDisposition || null,
+				'Cache-Control': obj.httpMetadata?.cacheControl || null,
+			}
+		});
 	}
 
 };
