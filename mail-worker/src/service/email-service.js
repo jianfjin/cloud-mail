@@ -25,6 +25,16 @@ import { att } from '../entity/att';
 import telegramService from './telegram-service';
 import calendarPreviewService from './calendar-preview-service';
 import calendarResponseService from './calendar-response-service';
+import { buildRawMime } from '../lib/outbound-mime';
+import { normalizeRecipients, RecipientValidationError } from '../lib/recipient-utils';
+import { submitRawSmtp } from './smtp-submit-service';
+
+const MAX_EXTERNAL_RECIPIENTS = 50;
+
+async function createCloudflareRawEmail(from, recipient, rawMessage) {
+	const { EmailMessage } = await import('cloudflare:email');
+	return new EmailMessage(from, recipient, rawMessage);
+}
 
 const emailService = {
 
@@ -260,8 +270,23 @@ const emailService = {
 			text, //邮件纯文本
 			content, //邮件内容
 			subject, //邮件标题
+			cc,
+			bcc,
 			attachments = [] //附件
 		} = params;
+		let recipients;
+		try {
+			recipients = normalizeRecipients({ receiveEmail, cc, bcc });
+		} catch (error) {
+			if (error instanceof RecipientValidationError) {
+				throw new BizError(t(error.code), 400);
+			}
+			throw error;
+		}
+		receiveEmail = recipients.to;
+		cc = recipients.cc;
+		bcc = recipients.bcc;
+		const allRecipients = recipients.all;
 
 		const { resendTokens, r2Domain, send, domainList } = await settingService.query(c);
 
@@ -276,10 +301,13 @@ const emailService = {
 		const roleRow = await roleService.selectById(c, userRow.type);
 
 		//判断接收方是不是全部为站内邮箱
-		const allInternal = receiveEmail.every(email => {
+		const allInternal = allRecipients.every(email => {
 			const domain = '@' + emailUtils.getDomain(email);
 			return domainList.includes(domain);
 		});
+		if (!allInternal && allRecipients.length > MAX_EXTERNAL_RECIPIENTS) {
+			throw new BizError(t('externalRecipientLimit'), 400);
+		}
 
 		if (c.env.admin !== userRow.email) {
 
@@ -303,7 +331,7 @@ const emailService = {
 				if (roleRow.sendType === 'count') throw new BizError(t('totalSendLimit'), 403);
 			}
 
-			if (userRow.sendCount + receiveEmail.length > roleRow.sendCount) {
+			if (userRow.sendCount + allRecipients.length > roleRow.sendCount) {
 				if (roleRow.sendType === 'day') throw new BizError(t('daySendLack'), 403);
 				if (roleRow.sendType === 'count') throw new BizError(t('totalSendLack'), 403);
 			}
@@ -366,7 +394,9 @@ const emailService = {
 				sendResult = await this.sendByCloudflareEmail(c, {
 					name,
 					accountEmail: accountRow.email,
-					receiveEmail,
+					to: receiveEmail,
+					cc,
+					bcc,
 					subject,
 					text,
 					html,
@@ -378,7 +408,9 @@ const emailService = {
 				sendResult = await this.sendByResend(resendToken, {
 					name,
 					accountEmail: accountRow.email,
-					receiveEmail,
+					to: receiveEmail,
+					cc,
+					bcc,
 					subject,
 					text,
 					html,
@@ -415,13 +447,9 @@ const emailService = {
 		emailData.userId = userId;
 		emailData.resendEmailId = data?.id;
 
-		const recipient = [];
-
-		receiveEmail.forEach(item => {
-			recipient.push({ address: item, name: '' });
-		});
-
-		emailData.recipient = JSON.stringify(recipient);
+		emailData.recipient = JSON.stringify(receiveEmail.map(address => ({ address, name: '' })));
+		emailData.cc = JSON.stringify(cc.map(address => ({ address, name: '' })));
+		emailData.bcc = JSON.stringify(bcc.map(address => ({ address, name: '' })));
 
 		if (sendType === 'reply') {
 			emailData.inReplyTo = emailRow.messageId;
@@ -430,7 +458,7 @@ const emailService = {
 
 		//如果权限有发送次数增加用户发送次数
 		if (roleRow.sendCount && roleRow.sendType !== 'internal') {
-			await userService.incrUserSendCount(c, receiveEmail.length, userId);
+			await userService.incrUserSendCount(c, allRecipients.length, userId);
 		}
 
 		//保存到数据库并返回结果
@@ -457,7 +485,7 @@ const emailService = {
 
 		//如果全是站内接收方，直接写入数据库
 		if (allInternal) {
-			await this.HandleOnSiteEmail(c, receiveEmail, emailResult, attList);
+			await this.HandleOnSiteEmail(c, recipients, emailResult, attList);
 		}
 
 		const dateStr = dayjs().format('YYYY-MM-DD');
@@ -465,9 +493,9 @@ const emailService = {
 
 		//记录每天发件次数统计
 		if (!daySendTotal) {
-			await c.env.kv.put(kvConst.SEND_DAY_COUNT + dateStr, JSON.stringify(receiveEmail.length), { expirationTtl: 60 * 60 * 24 });
+			await c.env.kv.put(kvConst.SEND_DAY_COUNT + dateStr, JSON.stringify(allRecipients.length), { expirationTtl: 60 * 60 * 24 });
 		} else  {
-			daySendTotal = Number(daySendTotal) + receiveEmail.length
+			daySendTotal = Number(daySendTotal) + allRecipients.length
 			await c.env.kv.put(kvConst.SEND_DAY_COUNT + dateStr, JSON.stringify(daySendTotal), { expirationTtl: 60 * 60 * 24 });
 		}
 
@@ -475,11 +503,21 @@ const emailService = {
 	},
 
 	async sendByCloudflareEmail(c, params) {
+		const to = params.to ?? params.receiveEmail ?? [];
+		const cc = params.cc ?? [];
+		const bcc = params.bcc ?? [];
+
+		if (to.length === 0) {
+			return this.sendRawByCloudflareEmail(c, { ...params, to, cc, bcc });
+		}
+
 		const sendForm = {
 			from: { email: params.accountEmail, name: params.name },
-			to: [...params.receiveEmail],
+			to: [...to],
 			subject: params.subject
 		};
+		if (cc.length > 0) sendForm.cc = [...cc];
+		if (bcc.length > 0) sendForm.bcc = [...bcc];
 
 		if (params.text) {
 			sendForm.text = params.text;
@@ -510,17 +548,42 @@ const emailService = {
 		};
 	},
 
+	async sendRawByCloudflareEmail(c, params) {
+		const recipients = [...params.to, ...params.cc, ...params.bcc];
+		const attachments = await this.toRawAttachments(params.attachments);
+		const rawMessage = buildRawMime({ ...params, attachments });
+		const createEmailMessage = params.createEmailMessage || createCloudflareRawEmail;
+		let result = {};
+
+		for (const recipient of recipients) {
+			const rawEmail = await createEmailMessage(params.accountEmail, recipient, rawMessage);
+			result = await c.env.email.send(rawEmail);
+		}
+
+		return { data: { id: result.messageId } };
+	},
+
 	async sendByResend(resendToken, params) {
+		const to = params.to ?? params.receiveEmail ?? [];
+		const cc = params.cc ?? [];
+		const bcc = params.bcc ?? [];
+
+		if (to.length === 0) {
+			return this.sendRawByResendSmtp(resendToken, { ...params, to, cc, bcc });
+		}
+
 		const resend = new Resend(resendToken);
 
 		const sendForm = {
 			from: `${params.name} <${params.accountEmail}>`,
-			to: [...params.receiveEmail],
+			to: [...to],
 			subject: params.subject,
 			text: params.text,
 			html: params.html,
 			attachments: await this.toResendAttachments(params.attachments)
 		};
+		if (cc.length > 0) sendForm.cc = [...cc];
+		if (bcc.length > 0) sendForm.bcc = [...bcc];
 
 		if (params.sendType === 'reply') {
 			sendForm.headers = {
@@ -530,6 +593,18 @@ const emailService = {
 		}
 
 		return await resend.emails.send(sendForm);
+	},
+
+	async sendRawByResendSmtp(resendToken, params) {
+		const attachments = await this.toRawAttachments(params.attachments);
+		const rawMessage = buildRawMime({ ...params, attachments });
+		await submitRawSmtp({
+			apiKey: resendToken,
+			from: params.accountEmail,
+			recipients: [...params.to, ...params.cc, ...params.bcc],
+			rawMessage,
+		});
+		return { data: {} };
 	},
 
 	async toCloudflareAttachments(attachments) {
@@ -565,6 +640,18 @@ const emailService = {
 				content,
 				contentType: attachment.contentType || attachment.mimeType || attachment.type || 'application/octet-stream'
 			});
+		}
+
+		return result;
+	},
+
+	async toRawAttachments(attachments = []) {
+		const result = [];
+
+		for (const attachment of attachments) {
+			const content = await this.toAttachmentBase64(attachment);
+			if (!content) continue;
+			result.push({ ...attachment, content });
 		}
 
 		return result;
@@ -640,7 +727,12 @@ const emailService = {
 	},
 
 	//处理站内邮件发送
-	async HandleOnSiteEmail(c, receiveEmail, sendEmailData, attList) {
+	async HandleOnSiteEmail(c, recipientGroups, sendEmailData, attList) {
+		const isLegacyRecipientList = Array.isArray(recipientGroups);
+		const to = isLegacyRecipientList ? recipientGroups : recipientGroups.to;
+		const cc = isLegacyRecipientList ? [] : recipientGroups.cc;
+		const bcc = isLegacyRecipientList ? [] : recipientGroups.bcc;
+		const receiveEmail = isLegacyRecipientList ? recipientGroups : recipientGroups.all;
 
 		const { noRecipient  } = await settingService.query(c);
 
@@ -679,6 +771,9 @@ const emailService = {
 
 			//把发件人邮件改成收件
 			const emailValues = {...sendEmailData}
+			emailValues.recipient = JSON.stringify(to.map(address => ({ address, name: '' })));
+			emailValues.cc = JSON.stringify(cc.map(address => ({ address, name: '' })));
+			emailValues.bcc = '[]';
 			emailValues.status = emailConst.status.RECEIVE;
 			emailValues.type = emailConst.type.RECEIVE;
 			emailValues.toEmail = email;

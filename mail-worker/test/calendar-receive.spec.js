@@ -127,11 +127,15 @@ describe('calendar receipt persistence', () => {
 		expect(emailListColumns).toHaveProperty('hasCalendar');
 		expect(emailBriefColumns).not.toHaveProperty('calendarData');
 		expect(emailBriefColumns).toHaveProperty('hasCalendar');
+		expect(emailBriefColumns).toHaveProperty('cc');
+		expect(emailBriefColumns).toHaveProperty('bcc');
 
 		const calendarEmail = await emailService.receive(c, {
 			accountId: 10,
 			userId: 20,
 			calendarData: JSON.stringify({state: 'parsed'}),
+			cc: '[{"address":"copy@example.com"}]',
+			bcc: '[{"address":"blind@example.com"}]',
 		}, [], null);
 		const ordinaryEmail = await emailService.receive(c, {
 			accountId: 10,
@@ -145,6 +149,10 @@ describe('calendar receipt persistence', () => {
 
 		expect(fullCalendar).toMatchObject({hasCalendar: 1});
 		expect(briefCalendar).toMatchObject({hasCalendar: 1});
+		expect(briefCalendar).toMatchObject({
+			cc: '[{"address":"copy@example.com"}]',
+			bcc: '[{"address":"blind@example.com"}]',
+		});
 		expect(briefOrdinary).toMatchObject({hasCalendar: 0});
 		expect(briefCalendar).not.toHaveProperty('calendarData');
 		warningSpy.mockRestore();
