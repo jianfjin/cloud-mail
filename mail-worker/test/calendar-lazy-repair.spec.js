@@ -296,6 +296,39 @@ describe('historical calendar invitation repair', () => {
 		logSpy.mockRestore();
 	});
 
+	it('maps a missing D1 table to the documented 502 instead of leaking the raw D1 error', async () => {
+		const logSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const validEnvelope = {
+			schemaVersion: 2,
+			parserVersion: 'ical.js/2.2.1',
+			state: 'parsed',
+			sources: [],
+			events: [],
+			warnings: [],
+			truncated: { parts: false, events: false, envelope: false },
+			omittedPartCount: 0,
+			omittedEventCount: 0,
+		};
+		await insertEmail(30, 101, { calendarData: JSON.stringify(validEnvelope) });
+		// Simulate production schema drift: v3_6DB was never re-run after deploy.
+		await env.db.prepare('DROP TABLE calendar_provider').run();
+		const headers = await authorizationHeader(101);
+
+		const response = await app.request('/email/calendar-preview', {
+			method: 'POST',
+			headers,
+			body: JSON.stringify({ emailId: 30 }),
+		}, env);
+		const body = await response.json();
+
+		// The drift must surface as the documented "update the database" 502,
+		// not as a raw D1 error string with an undefined/500 code at HTTP 200.
+		expect(body.code).toBe(502);
+		expect(body.message).toContain('update the database');
+		expect(body.message).not.toContain('no such table');
+		logSpy.mockRestore();
+	});
+
 	it('binds RSVP mutations to the authenticated user and restricts provider administration', async () => {
 		const respond = vi.spyOn(calendarResponseService, 'respond').mockResolvedValue({responseId: 7, deliveryState: 'delivered'});
 		await env.db.prepare('INSERT INTO user (user_id, type) VALUES (202, 1), (203, 1)').run();
