@@ -32,10 +32,11 @@ const userService = {
 			throw new BizError(t('authExpired'), 401);
 		}
 
-		const [account, roleRow, permKeys] = await Promise.all([
+		const [account, roleRow, permKeys, ownedAccounts] = await Promise.all([
 			accountService.selectByEmailIncludeDel(c, userRow.email),
 			roleService.selectById(c, userRow.type),
-			userRow.email === c.env.admin ? Promise.resolve(['*']) : permService.userPermKeys(c, userId)
+			userRow.email === c.env.admin ? Promise.resolve(['*']) : permService.userPermKeys(c, userId),
+			accountService.listActiveByUserId(c, userId),
 		]);
 
 		const user = {};
@@ -47,6 +48,7 @@ const userService = {
 		user.permKeys = permKeys;
 		user.role = roleRow;
 		user.type = userRow.type;
+		user.ownedEmails = ownedAccounts.map(item => item.email);
 
 		if (c.env.admin === userRow.email) {
 			user.role = constant.ADMIN_ROLE

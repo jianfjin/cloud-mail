@@ -25,9 +25,15 @@ vi.mock('@/request/email.js', () => ({
 
 vi.mock('@/request/star.js', () => ({starAdd: vi.fn(), starCancel: vi.fn()}))
 vi.mock('@/request/all-email.js', () => ({allEmailDelete: vi.fn()}))
+vi.mock('@/store/user.js', () => ({
+  useUserStore: () => ({
+    user: {email: 'owner@example.com', ownedEmails: ['owner@example.com']},
+  }),
+}))
 
 let ContentView
 let useEmailStore
+let useUiStore
 
 function calendarEnvelope() {
   return {
@@ -94,18 +100,20 @@ function mountContent(email) {
         Icon: true,
         ShadowHtml: true,
         'el-alert': true,
+        'el-button': {template: '<button v-bind="$attrs" @click="$emit(\'click\')"><slot /></button>'},
         'el-image-viewer': true,
         'el-scrollbar': {template: '<div><slot /></div>'},
       },
     },
   })
-  return {store, wrapper}
+  return {pinia, store, wrapper}
 }
 
 beforeAll(async () => {
   setActivePinia(createPinia())
   ContentView = (await import('./index.vue')).default
   useEmailStore = (await import('@/store/email.js')).useEmailStore
+  useUiStore = (await import('@/store/ui.js')).useUiStore
 })
 
 beforeEach(() => {
@@ -158,6 +166,59 @@ describe('calendar preview from selected brief email', () => {
     expect(wrapper.get('.calendar-preview__retry').text()).toBe('Retry')
     await wrapper.get('.calendar-preview__retry').trigger('click')
     expect(emailCalendarPreview).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+})
+
+describe('recipient details and Reply All', () => {
+  it('keeps BCC private on received mail and starts Reply All with only visible peers', async () => {
+    const email = briefEmail({
+      emailId: 55,
+      hasCalendar: 0,
+      type: 0,
+      sendEmail: 'organizer@example.net',
+      recipient: JSON.stringify([
+        {address: 'owner@example.com', name: 'Owner'},
+        {address: 'peer@example.net', name: 'Peer'},
+      ]),
+      cc: JSON.stringify([{address: 'copy@example.net', name: 'Copy'}]),
+      bcc: JSON.stringify([{address: 'blind@example.net', name: 'Blind'}]),
+    })
+    const {pinia, store, wrapper} = mountContent(email)
+    const replyAll = vi.fn()
+    useUiStore(pinia).writerRef = {openReplyAll: replyAll}
+    store.detailMap[email.emailId] = {...email, content: '<p>Message</p>'}
+
+    await nextTick()
+
+    expect(wrapper.text()).toContain('peer@example.net')
+    expect(wrapper.text()).toContain('copy@example.net')
+    expect(wrapper.text()).not.toContain('blind@example.net')
+    await wrapper.get('[aria-label="Reply all"]').trigger('click')
+    expect(replyAll).toHaveBeenCalledWith(expect.objectContaining({
+      emailId: email.emailId,
+      content: '<p>Message</p>',
+    }), {
+      to: ['organizer@example.net'],
+      cc: ['peer@example.net', 'copy@example.net'],
+      bcc: [],
+    })
+    wrapper.unmount()
+  })
+
+  it('shows BCC only on the sender Sent copy', async () => {
+    const {wrapper} = mountContent(briefEmail({
+      emailId: 56,
+      hasCalendar: 0,
+      type: 1,
+      recipient: JSON.stringify([{address: 'to@example.net', name: 'To'}]),
+      cc: JSON.stringify([{address: 'copy@example.net', name: 'Copy'}]),
+      bcc: JSON.stringify([{address: 'blind@example.net', name: 'Blind'}]),
+    }))
+
+    await nextTick()
+
+    expect(wrapper.text()).toContain('blind@example.net')
     wrapper.unmount()
   })
 })

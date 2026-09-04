@@ -8,6 +8,14 @@
         <Icon class="icon" @click="changeStar" v-else icon="solar:star-line-duotone" width="18" height="18"/>
       </span>
       <Icon class="icon" v-if="emailStore.contentData.showReply" v-perm="'email:send'"  @click="openReply" icon="la:reply" width="21" height="21" />
+      <el-button
+          v-if="canReplyAll"
+          v-perm="'email:send'"
+          text
+          size="small"
+          :aria-label="$t('replyAll')"
+          @click="openReplyAll"
+      >{{ $t('replyAll') }}</el-button>
       <Icon class="icon" v-if="emailStore.contentData.showReply" v-perm="'email:send'"  @click="openForward" icon="iconoir:arrow-up-right" width="20" height="20" />
     </div>
     <div></div>
@@ -25,7 +33,9 @@
                   <span><{{ email.sendEmail }}></span>
                 </div>
               </div>
-              <div class="receive"><span class="source">{{$t('recipient')}}</span><span class="receive-email">{{  formateReceive(email.recipient) }}</span></div>
+              <div class="receive"><span class="source">{{$t('recipient')}}</span><span class="receive-email">{{ formatRecipients(email.recipient) }}</span></div>
+              <div v-if="ccRecipients.length" class="receive"><span class="source">{{$t('cc')}}</span><span class="receive-email">{{ ccRecipients.join(', ') }}</span></div>
+              <div v-if="bccRecipients.length && isSentCopy" class="receive"><span class="source">{{$t('bcc')}}</span><span class="receive-email">{{ bccRecipients.join(', ') }}</span></div>
               <div class="date">
                 <div>{{ formatDetailDate(email.createTime) }}</div>
               </div>
@@ -92,6 +102,7 @@ import {emailDelete, emailRead} from "@/request/email.js";
 import {Icon} from "@iconify/vue";
 import {useEmailStore} from "@/store/email.js";
 import {useAccountStore} from "@/store/account.js";
+import {useUserStore} from "@/store/user.js";
 import {formatDetailDate} from "@/utils/day.js";
 import {starAdd, starCancel} from "@/request/star.js";
 import {getExtName, formatBytes} from "@/utils/file-utils.js";
@@ -102,10 +113,12 @@ import {allEmailDelete} from "@/request/all-email.js";
 import {useUiStore} from "@/store/ui.js";
 import {useI18n} from "vue-i18n";
 import {EmailUnreadEnum} from "@/enums/email-enum.js";
+import {deriveReplyAllRecipients, parseRecipientAddresses} from "@/utils/recipient-utils.js";
 
 const uiStore = useUiStore();
 const settingStore = useSettingStore();
 const accountStore = useAccountStore();
+const userStore = useUserStore();
 const emailStore = useEmailStore();
 const router = useRouter()
 const email = computed(() => emailStore.contentData.email || {
@@ -114,7 +127,27 @@ const email = computed(() => emailStore.contentData.email || {
   content: '',
   text: '',
   recipient: '[]',
+  cc: '[]',
+  bcc: '[]',
 })
+const ccRecipients = computed(() => parseRecipientAddresses(email.value?.cc))
+const bccRecipients = computed(() => parseRecipientAddresses(email.value?.bcc))
+const isSentCopy = computed(() => Number(email.value?.type) === 1)
+const ownedEmails = computed(() => {
+  const emails = [
+    ...(userStore.user?.ownedEmails || []),
+    userStore.user?.email,
+    userStore.user?.account?.email,
+    accountStore.currentAccount?.email,
+    ...accountStore.accounts.map(account => account.email),
+  ]
+  return [...new Set(emails.filter(Boolean).map(address => address.toLowerCase()))]
+})
+const hydratedEmail = computed(() => emailStore.detailMap[email.value?.emailId] || null)
+const replyAllRecipients = computed(() => hydratedEmail.value
+  ? deriveReplyAllRecipients(hydratedEmail.value, ownedEmails.value)
+  : null)
+const canReplyAll = computed(() => Boolean(replyAllRecipients.value && emailStore.contentData.showReply))
 const showPreview = ref(false)
 const srcList = reactive([])
 const calendarEntry = computed(() => emailStore.calendarPreviewMap[email.value?.emailId] || null)
@@ -209,6 +242,12 @@ function openReply() {
   uiStore.writerRef.openReply(email.value)
 }
 
+function openReplyAll() {
+  if (replyAllRecipients.value) {
+    uiStore.writerRef.openReplyAll(hydratedEmail.value || email.value, replyAllRecipients.value)
+  }
+}
+
 function openForward() {
   uiStore.writerRef.openForward(email.value)
 }
@@ -235,10 +274,8 @@ function isImage(filename) {
   return ['png', 'jpg', 'jpeg', 'bmp', 'gif','jfif'].includes(getExtName(filename))
 }
 
-function formateReceive(recipient) {
-  if (!recipient) return ''
-  recipient = JSON.parse(recipient)
-  return recipient.map(item => item.address).join(', ')
+function formatRecipients(recipient) {
+  return parseRecipientAddresses(recipient).join(', ')
 }
 
 function changeStar() {

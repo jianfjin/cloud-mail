@@ -383,6 +383,8 @@ function remove(account) {
     accountDelete(account.accountId).then(() => {
       const index = accounts.findIndex(item => item.accountId === account.accountId);
       accounts.splice(index, 1);
+      accountStore.accounts = [...accounts]
+      userStore.refreshUserInfo()
       if (accounts.length < queryParams.size) {
         getAccountList()
       }

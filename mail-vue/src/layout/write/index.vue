@@ -26,36 +26,46 @@
         </div>
       </div>
       <div class="container">
-        <el-input-tag  @add-tag="addTagChange" tag-type="primary" @input="inputChange" size="default" v-model="form.receiveEmail" >
-          <template #prefix>
-            <div class="item-title" >{{ $t('recipient') }}</div>
-            <el-select
-                ref="mySelect"
-                class="write-select"
-                popper-class="write-select"
-                :show-arrow="false"
-                :no-match-text="' '"
-                :no-data-text="' '"
-                @visible-change="selectStatusChange"
-                @change="selectChange"
-            >
-              <el-option
-                  v-for="item in selectRecipientList"
-                  :key="item"
-                  :label="item"
-                  :value="item"
-                  style="color: #999896;"
-              />
-            </el-select>
-          </template>
-          <template #suffix>
-            <div style="display: flex;margin-right: 3px;">
-              <Icon icon="fa7-solid:user-plus" width="20" height="20" class="add-contact" @click.stop="openContacts" />
-            </div>
-          </template>
-        </el-input-tag>
+        <div class="recipient-fields">
+          <recipientInput
+              v-model="form.receiveEmail"
+              :label="$t('recipient')"
+              :suggestions="selectRecipientList.to"
+              @activate="setActiveRecipientRole('to')"
+              @add-tag="addTagChange('to', $event)"
+              @input="inputChange('to', $event)"
+              @suggestion="selectChange('to', $event)"
+              @contacts="openContacts('to')"
+          />
+          <div v-if="!showCc || !showBcc" class="recipient-disclosure">
+            <el-button v-if="!showCc" text size="small" @click="showRecipientRole('cc')">{{ $t('cc') }}</el-button>
+            <el-button v-if="!showBcc" text size="small" @click="showRecipientRole('bcc')">{{ $t('bcc') }}</el-button>
+          </div>
+          <recipientInput
+              v-if="showCc"
+              v-model="form.cc"
+              :label="$t('cc')"
+              :suggestions="selectRecipientList.cc"
+              @activate="setActiveRecipientRole('cc')"
+              @add-tag="addTagChange('cc', $event)"
+              @input="inputChange('cc', $event)"
+              @suggestion="selectChange('cc', $event)"
+              @contacts="openContacts('cc')"
+          />
+          <recipientInput
+              v-if="showBcc"
+              v-model="form.bcc"
+              :label="$t('bcc')"
+              :suggestions="selectRecipientList.bcc"
+              @activate="setActiveRecipientRole('bcc')"
+              @add-tag="addTagChange('bcc', $event)"
+              @input="inputChange('bcc', $event)"
+              @suggestion="selectChange('bcc', $event)"
+              @contacts="openContacts('bcc')"
+          />
+        </div>
         <el-input v-model="form.subject" :placeholder="t('subject')" />
-        <tinyEditor :def-value="defValue" ref="editor" @change="change" @focus="focusChange" />
+        <tinyEditor :def-value="defValue" ref="editor" @change="change" />
         <div class="button-item">
           <div class="att-add" @click="chooseFile">
             <Icon icon="iconamoon:attachment-fill" width="24" height="24"/>
@@ -105,11 +115,12 @@
 </template>
 <script setup>
 import tinyEditor from '@/components/tiny-editor/index.vue'
+import recipientInput from '@/components/recipient-input/index.vue'
 import {h, nextTick, onMounted, onUnmounted, reactive, ref, toRaw, computed} from "vue";
 import {Icon} from "@iconify/vue";
 import {useUserStore} from "@/store/user.js";
 import {emailSend} from "@/request/email.js";
-import {isEmail} from "@/utils/verify-utils.js";
+import {normalizeRecipientGroups} from "@/utils/recipient-utils.js";
 import {useAccountStore} from "@/store/account.js";
 import {useEmailStore} from "@/store/email.js";
 import {fileToBase64, formatBytes} from "@/utils/file-utils.js";
@@ -129,6 +140,7 @@ import {ElMessageBox} from "element-plus";
 defineExpose({
   open,
   openReply,
+  openReplyAll,
   openForward,
   openDraft
 })
@@ -148,10 +160,13 @@ let sending = false
 const defValue = ref('')
 const contactsTabRef = ref({})
 const showContacts = ref(false)
-const mySelect = ref()
-let selectStatus = false
+const activeRecipientRole = ref('to')
+const showCc = ref(false)
+const showBcc = ref(false)
 const backReply = reactive({
   receiveEmail: [],
+  cc: [],
+  bcc: [],
   subject: '',
   content: '',
   sendType: ''
@@ -159,6 +174,8 @@ const backReply = reactive({
 const form = reactive({
   sendEmail: '',
   receiveEmail: [],
+  cc: [],
+  bcc: [],
   accountId: -1,
   name: '',
   subject: '',
@@ -170,7 +187,7 @@ const form = reactive({
   draftId: null,
 })
 
-const selectRecipientList = ref([])
+const selectRecipientList = reactive({to: [], cc: [], bcc: []})
 const SIGNATURE_CLASS = 'cloud-mail-auto-signature'
 const signatureState = reactive({
   accountId: null,
@@ -204,10 +221,25 @@ const senderOptions = computed(() => {
   return options
 })
 
-function openContacts() {
+function recipientList(role) {
+  return role === 'to' ? form.receiveEmail : form[role]
+}
+
+function setActiveRecipientRole(role) {
+  activeRecipientRole.value = role
+}
+
+function showRecipientRole(role) {
+  if (role === 'cc') showCc.value = true
+  if (role === 'bcc') showBcc.value = true
+  setActiveRecipientRole(role)
+}
+
+function openContacts(role = activeRecipientRole.value) {
+  setActiveRecipientRole(role)
   showContacts.value = true
   nextTick(() => {
-    form.receiveEmail.forEach(item => {
+    recipientList(role).forEach(item => {
       if (writerStore.sendRecipientRecord.includes(item)) {
         contactsTabRef.value.toggleRowSelection({email: item});
       }
@@ -222,73 +254,51 @@ function deleteContact() {
     type: 'warning'
   }).then(() => {
     const contactList = contactsTabRef.value.getSelectionRows().map(item => item.email);
-    form.receiveEmail = form.receiveEmail.filter(item => !contactList.includes(item));
+    const recipients = recipientList(activeRecipientRole.value)
+    const retained = recipients.filter(item => !contactList.includes(item))
+    if (activeRecipientRole.value === 'to') form.receiveEmail = retained
+    else form[activeRecipientRole.value] = retained
     writerStore.sendRecipientRecord = writerStore.sendRecipientRecord.filter(item => !contactList.includes(item));
   })
 }
 
 function chooseContact() {
-
   const contactList = contactsTabRef.value.getSelectionRows().map(item => item.email);
+  const recipients = recipientList(activeRecipientRole.value)
   contactList.forEach(item => {
-    if (!form.receiveEmail.includes(item)) {
-      form.receiveEmail.push(item);
+    if (!recipients.some(recipient => recipient.toLowerCase() === item.toLowerCase())) {
+      recipients.push(item);
     }
   })
-
-  form.receiveEmail = form.receiveEmail.filter(item => {
-    return contactList.includes(item) || !writerStore.sendRecipientRecord.includes(item);
-  });
-
   showContacts.value = false
 }
 
 function clearSelectContact() {
-  contactsTabRef.value.clearSelection();
+  contactsTabRef.value?.clearSelection?.();
 }
 
-function selectChange(value) {
-  form.receiveEmail.push(value)
-}
-
-function selectStatusChange(status) {
-  selectStatus = status
-}
-
-const openSelect = () => {
-  mySelect.value.toggleMenu()
-}
-
-function inputChange(value) {
-
-  selectRecipientList.value = writerStore.sendRecipientRecord.filter(item => value && !form.receiveEmail.includes(item) && item.startsWith(value)).slice(0, 10);
-
-  if (!selectStatus && selectRecipientList.value.length > 0) {
-    openSelect()
+function selectChange(role, value) {
+  const recipients = recipientList(role)
+  if (!recipients.some(item => item.toLowerCase() === value.toLowerCase())) {
+    recipients.push(value)
   }
-
-  if (selectStatus && selectRecipientList.value.length === 0) {
-    openSelect()
-  }
-
 }
 
-function addTagChange(val) {
+function inputChange(role, value) {
+  const input = String(value || '').toLowerCase()
+  selectRecipientList[role] = writerStore.sendRecipientRecord
+      .filter(item => input && !recipientList(role).some(recipient => recipient.toLowerCase() === item.toLowerCase()) && item.toLowerCase().startsWith(input))
+      .slice(0, 10)
+}
 
-  const emails = Array.from(new Set(
-      val.split(/[,，]/).map(item => item.trim()).filter(item => item)
-  ));
-
-  form.receiveEmail.splice(form.receiveEmail.length - 1, 1)
-
-  let has = false
-  emails.forEach(email => {
-    if (isEmail(email) && !form.receiveEmail.includes(email)) {
-      form.receiveEmail.push(email)
-      has = true
+function addTagChange(role, value) {
+  const recipients = recipientList(role)
+  if (recipients.at(-1) === value) recipients.pop()
+  for (const address of String(value).split(/[,，]/).map(item => item.trim()).filter(Boolean)) {
+    if (!recipients.some(item => item.toLowerCase() === address.toLowerCase())) {
+      recipients.push(address)
     }
-  })
-  if (selectStatus && has) openSelect()
+  }
 }
 
 function clearContent() {
@@ -330,15 +340,24 @@ function chooseFile() {
 }
 
 async function sendEmail() {
-
-  if (form.receiveEmail.length === 0) {
+  const recipients = normalizeRecipientGroups(form)
+  if (recipients.errors.length > 0) {
+    const errorType = recipients.errors[0].type
     ElMessage({
-      message: t('emptyRecipientMsg'),
+      message: errorType === 'empty'
+          ? t('emptyRecipientMsg')
+          : errorType === 'duplicate'
+              ? t('recipientDuplicateMsg')
+              : t('invalidRecipientMsg'),
       type: 'error',
       plain: true,
     })
     return
   }
+
+  form.receiveEmail = recipients.to
+  form.cc = recipients.cc
+  form.bcc = recipients.bcc
 
   if (!form.subject) {
     ElMessage({
@@ -413,6 +432,8 @@ async function sendEmail() {
       form.subject = ''
       form.content = ''
       form.receiveEmail = []
+      form.cc = []
+      form.bcc = []
       draftStore.setDraft = {...toRaw(form)}
     }
 
@@ -439,16 +460,36 @@ async function sendEmail() {
 }
 
 function addRecipientRecord() {
+  const recipients = [...form.receiveEmail, ...form.cc, ...form.bcc]
   writerStore.sendRecipientRecord = writerStore.sendRecipientRecord.filter(
-      email => !form.receiveEmail.includes(email)
+      email => !recipients.some(recipient => recipient.toLowerCase() === email.toLowerCase())
   );
 
-  writerStore.sendRecipientRecord.unshift(...form.receiveEmail);
+  writerStore.sendRecipientRecord.unshift(...recipients);
   writerStore.sendRecipientRecord = writerStore.sendRecipientRecord.slice(0, 500);
+}
+
+function snapshotReply() {
+  backReply.content = editor.value.getContent()
+  backReply.subject = form.subject
+  backReply.receiveEmail = [...form.receiveEmail]
+  backReply.cc = [...form.cc]
+  backReply.bcc = [...form.bcc]
+  backReply.sendType = form.sendType
+}
+
+function hasSameRecipients() {
+  return ['receiveEmail', 'cc', 'bcc'].every(field => {
+    const current = field === 'receiveEmail' ? form.receiveEmail : form[field]
+    const saved = backReply[field]
+    return current.length === saved.length && current.every((recipient, index) => recipient === saved[index])
+  })
 }
 
 function resetForm() {
   form.receiveEmail = []
+  form.cc = []
+  form.bcc = []
   form.subject = ''
   form.content = ''
   defValue.value = ''
@@ -460,7 +501,12 @@ function resetForm() {
   backReply.content = ''
   backReply.subject = ''
   backReply.receiveEmail = []
+  backReply.cc = []
+  backReply.bcc = []
   backReply.sendType = ''
+  showCc.value = false
+  showBcc.value = false
+  activeRecipientRole.value = 'to'
   resetSignatureState()
   editor.value.clearEditor()
 }
@@ -468,10 +514,6 @@ function resetForm() {
 function change(content, text) {
   form.content = content;
   form.text = text
-}
-
-function focusChange() {
-  if (selectStatus) openSelect()
 }
 
 function openForward(email) {
@@ -491,22 +533,29 @@ function openForward(email) {
     open()
 
     nextTick(() => {
-      backReply.content = editor.value.getContent()
-      backReply.subject = form.subject
-      backReply.receiveEmail = form.receiveEmail
-      backReply.sendType = form.sendType
+      snapshotReply()
     })
 
   });
 }
 
 function openReply(email) {
+  openReplyWithRecipients(email, {to: [email.sendEmail], cc: [], bcc: []})
+}
 
+function openReplyAll(email, recipients) {
+  openReplyWithRecipients(email, recipients)
+}
+
+function openReplyWithRecipients(email, recipients) {
   resetForm();
 
   email.subject = email.subject || ''
 
-  form.receiveEmail.push(email.sendEmail)
+  form.receiveEmail = [...(recipients?.to || [])]
+  form.cc = [...(recipients?.cc || [])]
+  form.bcc = []
+  showCc.value = form.cc.length > 0
   form.subject = (
       email.subject.startsWith('Re:') ||
       email.subject.startsWith('Re：') ||
@@ -531,10 +580,7 @@ function openReply(email) {
     open()
 
     nextTick(() => {
-      backReply.content = editor.value.getContent()
-      backReply.subject = form.subject
-      backReply.receiveEmail = form.receiveEmail
-      backReply.sendType = form.sendType
+      snapshotReply()
     })
   })
 
@@ -557,6 +603,11 @@ function open() {
 
 function openDraft(draft) {
   Object.assign(form, {...draft})
+  form.receiveEmail = Array.isArray(draft.receiveEmail) ? draft.receiveEmail : []
+  form.cc = Array.isArray(draft.cc) ? draft.cc : []
+  form.bcc = Array.isArray(draft.bcc) ? draft.bcc : []
+  showCc.value = form.cc.length > 0
+  showBcc.value = form.bcc.length > 0
   resetSignatureState()
   defValue.value = ''
   setTimeout(() => defValue.value = form.content)
@@ -579,9 +630,6 @@ onUnmounted(() => {
 });
 
 function close() {
-
-  if (selectStatus) openSelect();
-
   if (!form.content) {
     form.content = editor.value.getContent();
   }
@@ -594,7 +642,7 @@ function close() {
     return;
   }
 
-  if (!(form.content || form.subject || form.receiveEmail.length > 0)) {
+  if (!(form.content || form.subject || form.receiveEmail.length > 0 || form.cc.length > 0 || form.bcc.length > 0)) {
     show.value = false
     resetForm()
     return;
@@ -603,13 +651,9 @@ function close() {
   if (backReply.sendType === 'reply' || backReply.sendType === 'forward') {
     let subjectFlag = form.subject === backReply.subject
     let contentFlag = editor.value.getContent() === backReply.content
-    let receiveFlag = form.receiveEmail.length === 1 && form.receiveEmail[0] === backReply.receiveEmail[0]
-    if (backReply.sendType === 'forward' && form.receiveEmail.length === 0) {
-      receiveFlag = true;
-    }
-    if (subjectFlag && contentFlag && receiveFlag) {
+    if (subjectFlag && contentFlag && hasSameRecipients()) {
       resetForm();
-      close()
+      show.value = false
       return;
     }
   }
@@ -754,18 +798,6 @@ function changeSender(accountId) {
 }
 
 </script>
-<style>
-.write-select .el-select-dropdown__list {
-  padding: 4px 4px !important;
-}
-.write-select .el-select-dropdown__item {
-  padding: 0 10px 0 10px;
-}
-
-.write-select .el-select-dropdown {
-  min-width: 0 !important;
-}
-</style>
 <style scoped lang="scss">
 .send {
   position: fixed;
@@ -836,7 +868,15 @@ function changeSender(accountId) {
       grid-template-rows: auto auto 1fr auto;
       gap: 15px;
 
-      .item-title {
+      .recipient-fields {
+        display: grid;
+        gap: 8px;
+      }
+
+      .recipient-disclosure {
+        display: flex;
+        gap: 6px;
+        justify-content: flex-end;
       }
 
       .button-item {
@@ -905,19 +945,6 @@ function changeSender(accountId) {
   display: flex;
   justify-content: end;
   margin-top: 10px;
-}
-
-.add-contact {
-  color: var(--regular-text-color)
-}
-
-.write-select {
-  position: absolute;
-  width: 300px;
-  left: 60px;
-  z-index: 0;
-  opacity: 0;
-  pointer-events: none;
 }
 
 :deep(.el-input-tag__suffix) {

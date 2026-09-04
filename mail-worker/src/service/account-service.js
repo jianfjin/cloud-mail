@@ -149,6 +149,15 @@ const accountService = {
 			.all();
 	},
 
+	listActiveByUserId(c, userId) {
+		return orm(c).select({ email: account.email }).from(account).where(
+			and(
+				eq(account.userId, userId),
+				eq(account.isDel, isDel.NORMAL),
+			),
+		).orderBy(asc(account.accountId)).all();
+	},
+
 	async delete(c, params, userId) {
 
 		let { accountId } = params;
