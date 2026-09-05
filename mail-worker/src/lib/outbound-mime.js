@@ -107,6 +107,8 @@ export function buildRawMime({
 	attachments = [],
 	sendType,
 	messageId: replyMessageId,
+	replyTo,
+	headers: customHeaders = {},
 }) {
 	const headers = [
 		`From: ${formatFrom(name, accountEmail)}`,
@@ -122,6 +124,12 @@ export function buildRawMime({
 	if (sendType === 'reply' && replyMessageId) {
 		const relatedMessageId = sanitizeHeader(replyMessageId);
 		headers.push(`In-Reply-To: ${relatedMessageId}`, `References: ${relatedMessageId}`);
+	}
+	if (replyTo) headers.push('Reply-To: ' + sanitizeHeader(replyTo));
+	for (const [name, value] of Object.entries(customHeaders)) {
+		const safeName = sanitizeHeader(name);
+		const safeValue = sanitizeHeader(value);
+		if (safeName && safeValue) headers.push(safeName + ': ' + safeValue);
 	}
 
 	const parts = attachments.filter(attachment => attachment?.content);

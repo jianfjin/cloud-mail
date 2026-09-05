@@ -81,4 +81,13 @@ describe('outbound recipient providers', () => {
 		expect(raw).toContain('filename="agenda.ics"');
 		expect(raw).toContain('QkFTRTY0');
 	});
+
+	it('supports a private list representation without member headers', () => {
+		const raw = buildRawMime({...message, name: 'Sender via Team', accountEmail: 'team@example.com', to: ['team@example.com'], cc: [], bcc: [], replyTo: 'sender@example.com', headers: {'X-Cloud-Mail-Original-From': 'sender@example.com'}});
+		expect(raw).toContain('From: Sender via Team <team@example.com>');
+		expect(raw).toContain('To: team@example.com');
+		expect(raw).toContain('Reply-To: sender@example.com');
+		expect(raw).toContain('X-Cloud-Mail-Original-From: sender@example.com');
+		expect(raw).not.toContain('blind@example.net');
+	});
 });
