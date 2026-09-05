@@ -5,6 +5,10 @@ import mailingListService from '../service/mailing-list-service';
 app.get('/mailingList/list', async (c) => c.json(result.ok(await mailingListService.list(c, c.req.query()))));
 app.get('/mailingList/detail', async (c) => c.json(result.ok(await mailingListService.detail(c, c.req.query('listId')))));
 app.post('/mailingList/create', async (c) => c.json(result.ok(await mailingListService.create(c, await c.req.json()))));
+app.put('/mailingList/update', async (c) => {
+	const body = await c.req.json();
+	return c.json(result.ok(await mailingListService.update(c, body.listId, body)));
+});
 app.get('/mailingList/members', async (c) => c.json(result.ok(await mailingListService.members(c, c.req.query('listId')))));
 app.post('/mailingList/member', async (c) => {
 	const body = await c.req.json();
@@ -12,6 +16,15 @@ app.post('/mailingList/member', async (c) => {
 });
 app.delete('/mailingList/member', async (c) => {
 	await mailingListService.removeMember(c, c.req.query('listId'), c.req.query('memberId'));
+	return c.json(result.ok());
+});
+app.get('/mailingList/senders', async (c) => c.json(result.ok(await mailingListService.senders(c, c.req.query('listId')))));
+app.post('/mailingList/sender', async (c) => {
+	const body = await c.req.json();
+	return c.json(result.ok(await mailingListService.addSender(c, body.listId, body.email)));
+});
+app.delete('/mailingList/sender', async (c) => {
+	await mailingListService.removeSender(c, c.req.query('listId'), c.req.query('senderId'));
 	return c.json(result.ok());
 });
 app.put('/mailingList/state', async (c) => {

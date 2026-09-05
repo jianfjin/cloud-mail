@@ -6,9 +6,29 @@ function normalize(email) {
 	return email.trim().toLowerCase();
 }
 
+function limitValue(value, label) {
+	if (value === null || value === undefined || value === '') return null;
+	const parsed = Number(value);
+	if (!Number.isInteger(parsed) || parsed < 1) throw new BizError(label + ' must be a positive integer');
+	return parsed;
+}
+
+function withEffectiveLimits(list, setting) {
+	if (!list) return null;
+	return {
+		...list,
+		effectiveMemberLimit: list.member_limit || setting?.mailing_list_member_limit || 500,
+		effectiveDailyPostLimit: list.daily_post_limit || setting?.mailing_list_daily_post_limit || 100,
+	};
+}
+
 const mailingListService = {
 	async detail(c, listId) {
-		return await c.env.db.prepare('SELECT * FROM mailing_list WHERE list_id = ?').bind(Number(listId)).first();
+		const [list, setting] = await Promise.all([
+			c.env.db.prepare('SELECT * FROM mailing_list WHERE list_id = ?').bind(Number(listId)).first(),
+			c.env.db.prepare('SELECT mailing_list_member_limit, mailing_list_daily_post_limit FROM setting LIMIT 1').first(),
+		]);
+		return withEffectiveLimits(list, setting);
 	},
 
 	async list(c, query = {}) {
@@ -16,7 +36,11 @@ const mailingListService = {
 		const statement = search
 			? c.env.db.prepare('SELECT * FROM mailing_list WHERE address LIKE ? OR display_name LIKE ? ORDER BY list_id DESC').bind('%' + search + '%', '%' + search + '%')
 			: c.env.db.prepare('SELECT * FROM mailing_list ORDER BY list_id DESC');
-		return (await statement.all()).results;
+		const [lists, setting] = await Promise.all([
+			statement.all(),
+			c.env.db.prepare('SELECT mailing_list_member_limit, mailing_list_daily_post_limit FROM setting LIMIT 1').first(),
+		]);
+		return lists.results.map(list => withEffectiveLimits(list, setting));
 	},
 
 	async create(c, params) {
@@ -63,6 +87,69 @@ const mailingListService = {
 
 	async removeMember(c, listId, memberId) {
 		await c.env.db.prepare('DELETE FROM mailing_list_member WHERE list_id = ? AND member_id = ?').bind(Number(listId), Number(memberId)).run();
+	},
+
+	async update(c, listId, params) {
+		const list = await this.detail(c, listId);
+		if (!list || list.state === 'retired') throw new BizError('Mailing list not found');
+		if (params.address && normalize(params.address) !== normalize(list.address)) {
+			throw new BizError('Mailing-list address is immutable');
+		}
+
+		const values = [];
+		const assignments = [];
+		if (params.displayName !== undefined) {
+			const displayName = params.displayName?.trim();
+			if (!displayName) throw new BizError('A display name is required');
+			assignments.push('display_name = ?');
+			values.push(displayName);
+		}
+		if (params.postingPolicy !== undefined) {
+			if (!['members', 'allowlist', 'public'].includes(params.postingPolicy)) throw new BizError('Invalid posting policy');
+			assignments.push('posting_policy = ?');
+			values.push(params.postingPolicy);
+		}
+		if (params.replyPolicy !== undefined) {
+			if (!['sender', 'list'].includes(params.replyPolicy)) throw new BizError('Invalid reply policy');
+			assignments.push('reply_policy = ?');
+			values.push(params.replyPolicy);
+		}
+		if (params.selfDelivery !== undefined) {
+			assignments.push('self_delivery = ?');
+			values.push(params.selfDelivery ? 1 : 0);
+		}
+		if (params.memberLimit !== undefined) {
+			assignments.push('member_limit = ?');
+			values.push(limitValue(params.memberLimit, 'Member limit'));
+		}
+		if (params.dailyPostLimit !== undefined) {
+			assignments.push('daily_post_limit = ?');
+			values.push(limitValue(params.dailyPostLimit, 'Daily post limit'));
+		}
+		if (assignments.length) {
+			assignments.push('update_time = CURRENT_TIMESTAMP');
+			await c.env.db.prepare('UPDATE mailing_list SET ' + assignments.join(', ') + ' WHERE list_id = ?').bind(...values, Number(listId)).run();
+		}
+		return this.detail(c, listId);
+	},
+
+	async senders(c, listId) {
+		return (await c.env.db.prepare('SELECT * FROM mailing_list_sender WHERE list_id = ? ORDER BY sender_id').bind(Number(listId)).all()).results;
+	},
+
+	async addSender(c, listId, email) {
+		const list = await this.detail(c, listId);
+		if (!list || list.state === 'retired') throw new BizError('Mailing list not found');
+		if (!email || !verifyUtils.isEmail(email)) throw new BizError('A valid sender email is required');
+		const normalized = normalize(email);
+		const existing = await c.env.db.prepare('SELECT sender_id FROM mailing_list_sender WHERE list_id = ? AND email_normalized COLLATE NOCASE = ?').bind(Number(listId), normalized).first();
+		if (existing) throw new BizError('Sender already exists');
+		await c.env.db.prepare('INSERT INTO mailing_list_sender (list_id, email, email_normalized) VALUES (?, ?, ?)').bind(Number(listId), email.trim(), normalized).run();
+		return this.senders(c, listId);
+	},
+
+	async removeSender(c, listId, senderId) {
+		await c.env.db.prepare('DELETE FROM mailing_list_sender WHERE list_id = ? AND sender_id = ?').bind(Number(listId), Number(senderId)).run();
 	},
 
 	async setState(c, listId, state) {
