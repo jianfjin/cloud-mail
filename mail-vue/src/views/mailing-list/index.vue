@@ -381,7 +381,13 @@ function deliveryType(state) {
 }
 
 function summary(totals) {
-  return [totals.delivered, totals.failed, totals.queued, totals.processing, totals.skipped].join(' / ');
+  return [
+    t('delivered') + ': ' + totals.delivered,
+    t('mailingListFailed') + ': ' + totals.failed,
+    t('mailingListQueued') + ': ' + totals.queued,
+    t('mailingListProcessing') + ': ' + totals.processing,
+    t('mailingListSkipped') + ': ' + totals.skipped,
+  ].join(' | ');
 }
 
 function notifyError(error) {
