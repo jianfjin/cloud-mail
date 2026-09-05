@@ -2,6 +2,7 @@ import {env} from 'cloudflare:test';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import PostalMime from 'postal-mime';
 import {dbInit} from '../src/init/init';
+import emailService from '../src/service/email-service';
 import mailingListDeliveryService from '../src/service/mailing-list-delivery-service';
 
 let c;
@@ -106,6 +107,20 @@ describe('mailing-list queue delivery', () => {
 		await mailingListDeliveryService.deliver(c, {postId: 1, deliveryId: 1, dispatchToken: 'dispatch-1'}, {internal, external});
 		expect(internal).toHaveBeenCalledTimes(1);
 		expect(external).not.toHaveBeenCalled();
+	});
+
+	it('uses the member as the external envelope recipient while preserving the list MIME headers', async () => {
+		await seedDelivery();
+		c.env.email = {};
+		const sendRaw = vi.spyOn(emailService, 'sendRawByCloudflareEmail').mockResolvedValue({data: {id: 'provider-id'}});
+
+		await mailingListDeliveryService.deliver(c, {postId: 1, deliveryId: 1, dispatchToken: 'dispatch-1'});
+
+		expect(sendRaw).toHaveBeenCalledWith(c, expect.objectContaining({
+			accountEmail: 'team@example.com',
+			to: ['team@example.com'],
+			envelopeRecipients: ['member@example.net'],
+		}));
 	});
 
 	it('records a safe failed outcome when a provider rejects the member copy', async () => {

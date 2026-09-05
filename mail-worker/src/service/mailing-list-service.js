@@ -71,13 +71,20 @@ const mailingListService = {
 		const normalized = normalize(email);
 		const listMember = await c.env.db.prepare('SELECT list_id FROM mailing_list WHERE address_normalized COLLATE NOCASE = ?').bind(normalized).first();
 		if (listMember) throw new BizError('A mailing list cannot be a member');
-		const setting = await c.env.db.prepare('SELECT mailing_list_member_limit FROM setting LIMIT 1').first();
-		const limit = list.member_limit || setting?.mailing_list_member_limit || 500;
-		const count = await c.env.db.prepare('SELECT count(*) AS count FROM mailing_list_member WHERE list_id = ?').bind(Number(listId)).first();
-		const existing = await c.env.db.prepare('SELECT member_id FROM mailing_list_member WHERE list_id = ? AND email_normalized COLLATE NOCASE = ?').bind(Number(listId), normalized).first();
-		if (existing) throw new BizError('Member already exists');
-		if (count.count >= limit) throw new BizError('Member limit reached');
-		await c.env.db.prepare('INSERT INTO mailing_list_member (list_id, email, email_normalized) VALUES (?, ?, ?)').bind(Number(listId), email.trim(), normalized).run();
+		const limit = list.effectiveMemberLimit;
+		const added = await c.env.db.prepare(
+			'INSERT INTO mailing_list_member (list_id, email, email_normalized) ' +
+			'SELECT ?, ?, ? ' +
+			'WHERE NOT EXISTS (SELECT 1 FROM mailing_list_member WHERE list_id = ? AND email_normalized COLLATE NOCASE = ?) ' +
+			'AND (SELECT count(*) FROM mailing_list_member WHERE list_id = ?) < ?',
+		).bind(Number(listId), email.trim(), normalized, Number(listId), normalized, Number(listId), limit).run();
+		if (added.meta.changes !== 1) {
+			const existing = await c.env.db.prepare(
+				'SELECT member_id FROM mailing_list_member WHERE list_id = ? AND email_normalized COLLATE NOCASE = ?',
+			).bind(Number(listId), normalized).first();
+			if (existing) throw new BizError('Member already exists');
+			throw new BizError('Member limit reached');
+		}
 		return await this.members(c, listId);
 	},
 

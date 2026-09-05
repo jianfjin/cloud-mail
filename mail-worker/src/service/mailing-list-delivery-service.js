@@ -34,13 +34,17 @@ async function sourceText(c, key) {
 	return new Response(source.body).text();
 }
 
-async function defaultExternal({c, params}) {
-	if (c.env.email) return emailService.sendRawByCloudflareEmail(c, params);
+async function defaultExternal({c, params, delivery}) {
+	const externalParams = {
+		...params,
+		envelopeRecipients: [delivery.email],
+	};
+	if (c.env.email) return emailService.sendRawByCloudflareEmail(c, externalParams);
 
 	const {resendTokens} = await settingService.query(c);
-	const token = resendTokens?.[emailUtils.getDomain(params.accountEmail)];
+	const token = resendTokens?.[emailUtils.getDomain(externalParams.accountEmail)];
 	if (!token) throw new Error('Outbound provider unavailable');
-	return emailService.sendRawByResendSmtp(token, params);
+	return emailService.sendRawByResendSmtp(token, externalParams);
 }
 
 async function toArrayBuffer(content) {

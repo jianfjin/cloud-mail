@@ -38,6 +38,17 @@ describe('mailing-list administration', () => {
 		expect((await mailingListService.detail(c, list.list_id)).state).toBe('enabled');
 	});
 
+	it('does not exceed the member cap when different additions race', async () => {
+		const list = await mailingListService.create(c, {address: 'team@example.com', displayName: 'Team', memberLimit: 1});
+		const attempts = await Promise.allSettled([
+			mailingListService.addMember(c, list.list_id, 'first@outside.test'),
+			mailingListService.addMember(c, list.list_id, 'second@outside.test'),
+		]);
+
+		expect(attempts.filter(attempt => attempt.status === 'fulfilled')).toHaveLength(1);
+		expect((await mailingListService.members(c, list.list_id)).length).toBe(1);
+	});
+
 	it('updates policy and limit settings, exposes effective values, and manages normalized senders', async () => {
 		const list = await mailingListService.create(c, {address: 'team@example.com', displayName: 'Team'});
 		const updated = await mailingListService.update(c, list.list_id, {

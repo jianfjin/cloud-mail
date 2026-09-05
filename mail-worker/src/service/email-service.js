@@ -549,7 +549,7 @@ const emailService = {
 	},
 
 	async sendRawByCloudflareEmail(c, params) {
-		const recipients = [...params.to, ...params.cc, ...params.bcc];
+		const recipients = params.envelopeRecipients || [...params.to, ...params.cc, ...params.bcc];
 		const attachments = await this.toRawAttachments(params.attachments);
 		const rawMessage = buildRawMime({ ...params, attachments });
 		const createEmailMessage = params.createEmailMessage || createCloudflareRawEmail;
@@ -601,7 +601,7 @@ const emailService = {
 		await submitRawSmtp({
 			apiKey: resendToken,
 			from: params.accountEmail,
-			recipients: [...params.to, ...params.cc, ...params.bcc],
+			recipients: params.envelopeRecipients || [...params.to, ...params.cc, ...params.bcc],
 			rawMessage,
 		});
 		return { data: {} };

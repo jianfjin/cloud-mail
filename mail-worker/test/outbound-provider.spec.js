@@ -62,6 +62,29 @@ describe('outbound recipient providers', () => {
 		expect(send).toHaveBeenCalledTimes(2);
 	});
 
+	it('uses a private envelope recipient without exposing it in raw list MIME', async () => {
+		const send = vi.fn().mockResolvedValue({messageId: 'list-provider-message-id'});
+		const createEmailMessage = vi.fn((from, to, raw) => ({from, to, raw}));
+
+		await emailService.sendRawByCloudflareEmail({env: {email: {send}}}, {
+			...message,
+			name: 'Sender via Team',
+			accountEmail: 'team@example.com',
+			to: ['team@example.com'],
+			cc: [],
+			bcc: [],
+			envelopeRecipients: ['member@example.net'],
+			createEmailMessage,
+		});
+
+		expect(createEmailMessage).toHaveBeenCalledWith(
+			'team@example.com',
+			'member@example.net',
+			expect.stringContaining('To: team@example.com'),
+		);
+		expect(createEmailMessage.mock.calls[0][2]).not.toContain('member@example.net');
+	});
+
 	it('keeps only visible Cc recipients and preserves attachment and reply metadata in raw MIME', () => {
 		const raw = buildRawMime({
 			...message,
