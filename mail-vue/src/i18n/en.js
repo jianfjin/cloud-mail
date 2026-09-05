@@ -429,6 +429,7 @@ const en = {
     mailingListAddress: 'List address',
     mailingListDisplayName: 'Display name',
     mailingListMembers: 'Members',
+    mailingListMemberCount: 'Members ({count} / {limit})',
     mailingListSenders: 'Allowed senders',
     mailingListPostingPolicy: 'Posting policy',
     mailingListMembersOnly: 'Members only',

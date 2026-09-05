@@ -78,7 +78,7 @@
 
       <div class="operations-grid">
         <section class="operation">
-          <h3>{{ $t('mailingListMembers') }}</h3>
+          <h3>{{ $t('mailingListMemberCount', {count: members.length, limit: selected.effectiveMemberLimit}) }}</h3>
           <div class="add-line">
             <el-input v-model="memberEmail" type="email" :placeholder="$t('emailAccount')" @keyup.enter="addMember"/>
             <el-button type="primary" @click="addMember">{{ $t('mailingListAddMember') }}</el-button>

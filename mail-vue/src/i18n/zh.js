@@ -429,6 +429,7 @@ const zh = {
     mailingListAddress: '列表地址',
     mailingListDisplayName: '显示名称',
     mailingListMembers: '成员',
+    mailingListMemberCount: '成员 ({count} / {limit})',
     mailingListSenders: '允许的发件人',
     mailingListPostingPolicy: '发帖策略',
     mailingListMembersOnly: '仅成员',

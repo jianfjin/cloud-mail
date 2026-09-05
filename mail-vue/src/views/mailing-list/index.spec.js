@@ -5,6 +5,10 @@ import en from '@/i18n/en.js';
 import zh from '@/i18n/zh.js';
 
 const mailingListList = vi.fn();
+const mailingListDetail = vi.fn();
+const mailingListMembers = vi.fn();
+const mailingListReports = vi.fn();
+const mailingListSenders = vi.fn();
 
 vi.mock('element-plus', () => ({
   ElMessage: {success: vi.fn(), error: vi.fn()},
@@ -21,12 +25,12 @@ vi.mock('@/request/mailing-list.js', () => ({
   mailingListCreate: vi.fn(),
   mailingListDeleteMember: vi.fn(),
   mailingListDeleteSender: vi.fn(),
-  mailingListDetail: vi.fn(),
+  mailingListDetail,
   mailingListList,
-  mailingListMembers: vi.fn(),
-  mailingListReports: vi.fn(),
+  mailingListMembers,
+  mailingListReports,
   mailingListRetry: vi.fn(),
-  mailingListSenders: vi.fn(),
+  mailingListSenders,
   mailingListSetState: vi.fn(),
   mailingListUpdate: vi.fn(),
 }));
@@ -44,7 +48,11 @@ const stubs = {
   'el-option': true,
   'el-select': {template: '<select><slot /></select>'},
   'el-switch': true,
-  'el-table': {template: '<div><slot name="empty" /></div>'},
+  'el-table': {
+    props: ['data'],
+    emits: ['row-click'],
+    template: '<div><button v-for="row in data" class="table-row" @click="$emit(\'row-click\', row)">{{ row.display_name }}</button><slot name="empty" /></div>',
+  },
   'el-table-column': true,
   'el-tag': true,
   'el-tooltip': {template: '<span><slot /></span>'},
@@ -67,7 +75,14 @@ beforeAll(async () => {
 
 beforeEach(() => {
   mailingListList.mockReset();
+  mailingListDetail.mockReset();
+  mailingListMembers.mockReset();
+  mailingListReports.mockReset();
+  mailingListSenders.mockReset();
   mailingListList.mockResolvedValue([]);
+  mailingListMembers.mockResolvedValue([]);
+  mailingListReports.mockResolvedValue([]);
+  mailingListSenders.mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -93,6 +108,32 @@ describe('mailing-list administration view', () => {
     expect(wrapper.get('section[aria-label="邮件列表"]').exists()).toBe(true);
     expect(wrapper.get('input[placeholder="搜索列表"]').exists()).toBe(true);
     expect(wrapper.get('button[aria-label="新建列表"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('shows the selected list member count against its effective cap', async () => {
+    const list = {
+      list_id: 7,
+      address: 'team@example.com',
+      display_name: 'Team',
+      state: 'enabled',
+      posting_policy: 'members',
+      reply_policy: 'sender',
+      self_delivery: 1,
+      member_limit: null,
+      daily_post_limit: null,
+      effectiveMemberLimit: 3,
+      effectiveDailyPostLimit: 100,
+    };
+    mailingListList.mockResolvedValue([list]);
+    mailingListDetail.mockResolvedValue(list);
+    mailingListMembers.mockResolvedValue([{member_id: 1, email: 'member@example.net'}]);
+    const wrapper = mountView('en');
+    await flushPromises();
+    await wrapper.get('button.table-row').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('Members (1 / 3)');
     wrapper.unmount();
   });
 });
