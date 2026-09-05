@@ -5,7 +5,7 @@ import {dbInit} from '../src/init/init';
 const c = {env};
 
 async function resetSchema() {
-	for (const table of ['mailing_list_delivery_attempt', 'mailing_list_delivery', 'mailing_list_post', 'mailing_list_daily_quota', 'mailing_list_sender', 'mailing_list_member', 'mailing_list', 'setting', 'account', 'perm']) {
+	for (const table of ['mailing_list_rejection', 'mailing_list_delivery_attempt', 'mailing_list_delivery', 'mailing_list_post', 'mailing_list_daily_quota', 'mailing_list_sender', 'mailing_list_member', 'mailing_list', 'setting', 'account', 'perm']) {
 		await env.db.prepare('DROP TABLE IF EXISTS ' + table).run();
 	}
 	await env.db.prepare('CREATE TABLE setting (title TEXT NOT NULL DEFAULT \'\')').run();
@@ -26,7 +26,7 @@ describe('mailing-list v3.7 initialization', () => {
 		const settings = await env.db.prepare('SELECT mailing_list_member_limit, mailing_list_daily_post_limit, mailing_list_report_retention_days FROM setting').first();
 		const account = await env.db.prepare('SELECT email FROM account WHERE account_id = 1').first();
 
-		expect(tables.results.map(row => row.name)).toEqual(['mailing_list', 'mailing_list_daily_quota', 'mailing_list_delivery', 'mailing_list_delivery_attempt', 'mailing_list_member', 'mailing_list_post', 'mailing_list_sender']);
+		expect(tables.results.map(row => row.name)).toEqual(['mailing_list', 'mailing_list_daily_quota', 'mailing_list_delivery', 'mailing_list_delivery_attempt', 'mailing_list_member', 'mailing_list_post', 'mailing_list_rejection', 'mailing_list_sender']);
 		expect(settings).toMatchObject({mailing_list_member_limit: 500, mailing_list_daily_post_limit: 100, mailing_list_report_retention_days: 30});
 		expect(account.email).toBe('existing@example.com');
 	});

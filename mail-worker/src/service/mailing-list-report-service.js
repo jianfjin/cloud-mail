@@ -129,6 +129,7 @@ const mailingListReportService = {
 			}
 		}
 
+		await c.env.db.prepare('DELETE FROM mailing_list_rejection WHERE create_time < ?').bind(cutoff).run();
 		return {removed, failed};
 	},
 };

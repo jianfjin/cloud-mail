@@ -20,7 +20,7 @@ beforeEach(async () => {
 			mailingListQueue: queue,
 		},
 	};
-	for (const table of ['mailing_list_delivery_attempt', 'mailing_list_delivery', 'mailing_list_post', 'mailing_list_daily_quota', 'mailing_list_sender', 'mailing_list_member', 'mailing_list', 'setting', 'perm']) {
+	for (const table of ['mailing_list_rejection', 'mailing_list_delivery_attempt', 'mailing_list_delivery', 'mailing_list_post', 'mailing_list_daily_quota', 'mailing_list_sender', 'mailing_list_member', 'mailing_list', 'setting', 'perm']) {
 		await env.db.prepare('DROP TABLE IF EXISTS ' + table).run();
 	}
 	await env.db.prepare('CREATE TABLE setting (title TEXT NOT NULL DEFAULT \'\')').run();
@@ -89,6 +89,10 @@ describe('mailing-list inbound acceptance', () => {
 	it('rejects a non-member before creating a post', async () => {
 		await expect(mailingListInboundService.accept(c, {to: 'team@example.com', sender: 'blocked@example.com', fingerprint: 'message-2'})).rejects.toThrow('not authorized');
 		expect((await env.db.prepare('SELECT count(*) AS count FROM mailing_list_post').first()).count).toBe(0);
+		expect(await env.db.prepare('SELECT sender_email, safe_reason FROM mailing_list_rejection').first()).toEqual({
+			sender_email: 'blocked@example.com',
+			safe_reason: 'Sender is not authorized to post',
+		});
 	});
 
 	it('applies sender allowlists case-insensitively', async () => {

@@ -60,10 +60,12 @@ const dbInit = {
 			c.env.db.prepare(`CREATE TABLE IF NOT EXISTS mailing_list_post (post_id INTEGER PRIMARY KEY AUTOINCREMENT, list_id INTEGER NOT NULL, source_fingerprint TEXT NOT NULL, sender_email TEXT NOT NULL, policy_snapshot TEXT NOT NULL, source_r2_key TEXT NOT NULL DEFAULT '', state TEXT NOT NULL DEFAULT 'accepted', create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (list_id, source_fingerprint))`),
 			c.env.db.prepare(`CREATE TABLE IF NOT EXISTS mailing_list_delivery (delivery_id INTEGER PRIMARY KEY AUTOINCREMENT, post_id INTEGER NOT NULL, email TEXT NOT NULL, email_normalized TEXT NOT NULL, target_type TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'pending', dispatch_token TEXT NOT NULL DEFAULT '', safe_reason TEXT NOT NULL DEFAULT '', create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (post_id, email_normalized))`),
 			c.env.db.prepare(`CREATE TABLE IF NOT EXISTS mailing_list_delivery_attempt (attempt_id INTEGER PRIMARY KEY AUTOINCREMENT, delivery_id INTEGER NOT NULL, attempt_number INTEGER NOT NULL, trigger_type TEXT NOT NULL, state TEXT NOT NULL, safe_reason TEXT NOT NULL DEFAULT '', create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE (delivery_id, attempt_number))`),
+			c.env.db.prepare(`CREATE TABLE IF NOT EXISTS mailing_list_rejection (rejection_id INTEGER PRIMARY KEY AUTOINCREMENT, list_id INTEGER NOT NULL, sender_email TEXT NOT NULL, safe_reason TEXT NOT NULL, create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`),
 			c.env.db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_mailing_list_address_nocase ON mailing_list(address_normalized COLLATE NOCASE)`),
 			c.env.db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_mailing_list_member_nocase ON mailing_list_member(list_id, email_normalized COLLATE NOCASE)`),
 			c.env.db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_mailing_list_sender_nocase ON mailing_list_sender(list_id, email_normalized COLLATE NOCASE)`),
 			c.env.db.prepare(`CREATE INDEX IF NOT EXISTS idx_mailing_list_delivery_state ON mailing_list_delivery(post_id, state)`),
+			c.env.db.prepare(`CREATE INDEX IF NOT EXISTS idx_mailing_list_rejection_created ON mailing_list_rejection(create_time)`),
 		]);
 		await c.env.db.prepare(`INSERT INTO perm (name, perm_key, pid, type, sort) SELECT '邮件列表管理', 'mailing-list:manage', 0, 2, 7 WHERE NOT EXISTS (SELECT 1 FROM perm WHERE perm_key = 'mailing-list:manage')`).run();
 	},

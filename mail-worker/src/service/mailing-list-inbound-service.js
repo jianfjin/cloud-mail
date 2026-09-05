@@ -49,6 +49,17 @@ async function rollbackAcceptance(c, {postId, sourceR2Key, quotaClaimed, listId,
 	}
 }
 
+async function rejectAcceptance(c, list, sender, reason) {
+	try {
+		await c.env.db.prepare(
+			'INSERT INTO mailing_list_rejection (list_id, sender_email, safe_reason) VALUES (?, ?, ?)',
+		).bind(list.list_id, sender, String(reason).slice(0, 200)).run();
+	} catch (_) {
+		console.error('Mailing-list rejection audit failed');
+	}
+	throw new BizError(reason);
+}
+
 async function duplicateAcceptance(c, listId, fingerprint) {
 	const existing = await c.env.db.prepare(
 		'SELECT post_id, state FROM mailing_list_post WHERE list_id = ? AND source_fingerprint = ?',
@@ -65,26 +76,26 @@ const mailingListInboundService = {
 			'SELECT * FROM mailing_list WHERE address_normalized COLLATE NOCASE = ?',
 		).bind(normalize(to)).first();
 		if (!list) return null;
-		if (list.state !== 'enabled') throw new BizError('Mailing list is not accepting posts');
+		if (list.state !== 'enabled') return rejectAcceptance(c, list, sender, 'Mailing list is not accepting posts');
 
 		const members = (await c.env.db.prepare(
 			'SELECT email, email_normalized FROM mailing_list_member WHERE list_id = ? ORDER BY member_id',
 		).bind(list.list_id).all()).results;
-		if (members.length === 0) throw new BizError('Mailing list has no members');
+		if (members.length === 0) return rejectAcceptance(c, list, sender, 'Mailing list has no members');
 
 		const senderNormalized = normalize(sender);
 		const isMember = members.some(member => member.email_normalized === senderNormalized);
 		if (list.posting_policy === 'members' && !isMember) {
-			throw new BizError('Sender is not authorized to post');
+			return rejectAcceptance(c, list, sender, 'Sender is not authorized to post');
 		}
 		if (list.posting_policy === 'allowlist') {
 			const allowed = await c.env.db.prepare(
 				'SELECT sender_id FROM mailing_list_sender WHERE list_id = ? AND email_normalized COLLATE NOCASE = ?',
 			).bind(list.list_id, senderNormalized).first();
-			if (!allowed) throw new BizError('Sender is not authorized to post');
+			if (!allowed) return rejectAcceptance(c, list, sender, 'Sender is not authorized to post');
 		}
 		if (!raw || !c.env.r2?.put || !c.env.mailingListQueue?.sendBatch) {
-			throw new BizError('Mailing list delivery unavailable');
+			return rejectAcceptance(c, list, sender, 'Mailing list delivery unavailable');
 		}
 
 		const duplicate = await duplicateAcceptance(c, list.list_id, fingerprint);
@@ -92,7 +103,7 @@ const mailingListInboundService = {
 		const existing = await c.env.db.prepare(
 			'SELECT post_id FROM mailing_list_post WHERE list_id = ? AND source_fingerprint = ?',
 		).bind(list.list_id, fingerprint).first();
-		if (existing) throw new BizError('Mailing list post is already being processed');
+		if (existing) return rejectAcceptance(c, list, sender, 'Mailing list post is already being processed');
 
 		const internalAddresses = await internalMemberAddresses(c, members);
 		const targets = members.map(member => ({
@@ -101,7 +112,7 @@ const mailingListInboundService = {
 			skipped: !list.self_delivery && member.email_normalized === senderNormalized,
 		}));
 		if (targets.some(target => target.targetType === 'external') && sourceByteLength(raw) > MAX_EXTERNAL_SOURCE_BYTES) {
-			throw new BizError('Mailing list source is too large for external delivery');
+			return rejectAcceptance(c, list, sender, 'Mailing list source is too large for external delivery');
 		}
 
 		const day = new Date().toISOString().slice(0, 10);
@@ -180,9 +191,9 @@ const mailingListInboundService = {
 				if (concurrentDuplicate) return concurrentDuplicate;
 			}
 			await rollbackAcceptance(c, {postId, sourceR2Key, quotaClaimed, listId: list.list_id, day});
-			if (error instanceof BizError) throw error;
+			if (error instanceof BizError) return rejectAcceptance(c, list, sender, error.message);
 			console.error('Mailing-list acceptance failed');
-			throw new BizError('Mailing list delivery unavailable');
+			return rejectAcceptance(c, list, sender, 'Mailing list delivery unavailable');
 		}
 	},
 };
