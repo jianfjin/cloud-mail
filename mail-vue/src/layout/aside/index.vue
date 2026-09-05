@@ -31,7 +31,7 @@
           <Icon icon="fluent:settings-48-regular" width="20" height="20" />
           <span class="menu-name" style="margin-left: 21px">{{$t('settings')}}</span>
         </el-menu-item>
-        <div class="manage-title" v-perm="['all-email:query','user:query','role:query','setting:query','analysis:query','reg-key:query']">
+        <div class="manage-title" v-perm="['all-email:query','user:query','role:query','setting:query','analysis:query','reg-key:query','mailing-list:manage']">
           <div>{{$t('manage')}}</div>
         </div>
         <el-menu-item @click="router.push({name: 'analysis'})" index="analysis" v-perm="'analysis:query'"
@@ -63,6 +63,11 @@
                       :class="route.meta.name === 'sys-setting' ? 'choose-item' : ''">
           <Icon icon="eos-icons:system-ok-outlined" width="18" height="18" style="margin-left: 2px" />
           <span class="menu-name" style="margin-left: 22px">{{$t('SystemSettings')}}</span>
+        </el-menu-item>
+        <el-menu-item @click="router.push({name: 'mailing-list'})" index="mailing-list" v-perm="'mailing-list:manage'"
+                      :class="route.meta.name === 'mailing-list' ? 'choose-item' : ''">
+          <Icon icon="fluent:people-community-20-regular" width="21" height="21" />
+          <span class="menu-name" style="margin-left: 21px">{{$t('mailingLists')}}</span>
         </el-menu-item>
       </el-menu>
     </div>

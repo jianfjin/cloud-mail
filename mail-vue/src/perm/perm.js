@@ -118,5 +118,15 @@ const routers = {
             name: 'analysis',
             menu: true
         }
+    }],
+    'mailing-list:manage': [{
+        path: '/mailing-lists',
+        name: 'mailing-list',
+        component: () => import('@/views/mailing-list/index.vue'),
+        meta: {
+            title: 'mailingLists',
+            name: 'mailing-list',
+            menu: true
+        }
     }]
 }
