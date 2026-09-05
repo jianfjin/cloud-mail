@@ -1,6 +1,7 @@
 import app from '../hono/hono';
 import result from '../model/result';
 import mailingListService from '../service/mailing-list-service';
+import mailingListReportService from '../service/mailing-list-report-service';
 
 app.get('/mailingList/list', async (c) => c.json(result.ok(await mailingListService.list(c, c.req.query()))));
 app.get('/mailingList/detail', async (c) => c.json(result.ok(await mailingListService.detail(c, c.req.query('listId')))));
@@ -26,6 +27,12 @@ app.post('/mailingList/sender', async (c) => {
 app.delete('/mailingList/sender', async (c) => {
 	await mailingListService.removeSender(c, c.req.query('listId'), c.req.query('senderId'));
 	return c.json(result.ok());
+});
+app.get('/mailingList/reports', async (c) => c.json(result.ok(await mailingListReportService.reports(c, c.req.query('listId')))));
+app.get('/mailingList/report', async (c) => c.json(result.ok(await mailingListReportService.report(c, c.req.query('listId'), c.req.query('postId')))));
+app.post('/mailingList/retry', async (c) => {
+	const body = await c.req.json();
+	return c.json(result.ok(await mailingListReportService.retry(c, body.listId, body.postId)));
 });
 app.put('/mailingList/state', async (c) => {
 	const body = await c.req.json();

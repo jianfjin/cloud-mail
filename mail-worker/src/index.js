@@ -7,6 +7,7 @@ import kvObjService from './service/kv-obj-service';
 import oauthService from './service/oauth-service';
 import analysisService from './service/analysis-service';
 import mailingListDeliveryService from './service/mailing-list-delivery-service';
+import mailingListReportService from './service/mailing-list-report-service';
 
 export async function processMailingListQueue(batch, env, deliver = mailingListDeliveryService.deliver) {
 	for (const message of batch.messages) {
@@ -50,6 +51,7 @@ export default {
 		await userService.resetDaySendCount({ env })
 		await emailService.completeReceiveAll({ env })
 		await emailService.autoClean({ env })
+		await mailingListReportService.cleanup({ env })
 		await analysisService.refreshEchartsCache({ env })
 		await oauthService.clearNoBindOathUser({ env })
 	},
