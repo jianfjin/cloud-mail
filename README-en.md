@@ -49,6 +49,8 @@ With only one domain, you can create multiple different email addresses, similar
 
 - **📧 Email Sending**: Integrated with Resend, supporting bulk email sending and attachments.
 
+- **📮 Mailing Lists**: Permission-gated private member distribution with policies, delivery reports, and failed-only retry.
+
 - **🛡️ Admin Features**: Admin controls for user and email management with RBAC-based access control.
 
 - **📦 Attachment Support**: Send and receive attachments, stored and downloaded via R2 object storage.

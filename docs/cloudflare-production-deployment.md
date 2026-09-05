@@ -97,6 +97,65 @@ local production configuration declares the intended D1, KV, R2, AI, assets,
 cron, variables, and custom-domain settings. Continuing replaces the remote
 configuration with the local one.
 
+## Mailing-List Rollout
+
+Mailing-list distribution uses the production R2 bucket for temporary private
+source MIME and the `cloud-mail-mailing-list` Queue for identifier-only
+delivery work. The Worker configuration declares both a Queue producer binding
+named `mailingListQueue` and a consumer with `max_retries = 0`: a failed
+recipient is recorded in D1 and must be retried deliberately from the
+management UI.
+
+1. Create the production Queue once, before the first deployment that includes
+   the Queue binding:
+
+   ```bash
+   npx wrangler queues create cloud-mail-mailing-list
+   ```
+
+2. Deploy the Worker using the normal procedure above. Do not remove the
+   existing `r2` binding; it stores temporary source MIME so retries can render
+   the original message without putting bodies or attachments in D1.
+
+3. Apply the repeatable D1 initialization after deployment. The current
+   `/api/init/:secret` endpoint requires the existing `jwt_secret`; read it
+   interactively so it does not enter shell history.
+
+   ```bash
+   read -rsp "jwt_secret: " JWT_SECRET; printf '\n'
+   curl --fail "https://mail.edmf.nl/api/init/${JWT_SECRET}"
+   unset JWT_SECRET
+   ```
+
+   A successful response is `success`. This adds the v3.7 mailing-list tables,
+   settings columns, indexes, and `mailing-list:manage` permission without
+   changing existing mailboxes or messages. Because the legacy endpoint puts
+   the secret in the request path, run it only from a trusted machine and
+   rotate the secret if it may have reached an access log.
+
+4. Assign `mailing-list:manage` to the administrator role that will operate
+   lists. The sidebar and API both remain unavailable to users without this
+   permission.
+
+5. Confirm Cloudflare Email Routing delivers the intended owned list domain to
+   this Worker. Also confirm at least one outbound route is available for
+   external members: a bound Cloudflare Email Sending binding or a configured
+   Resend token for the list domain.
+
+6. Run a staging smoke test:
+
+   - Create an enabled list on an owned domain with one internal and one
+     external member.
+   - Send a source message below 5 MiB to the list address.
+   - Verify each member receives a private copy showing only the list address,
+     with no expanded member list.
+   - Open the delivery report, force or observe one failed external member,
+     then use **Retry failed**. Confirm completed outcomes are not resent.
+
+If a rollout must be paused, disable the affected list in the management UI.
+Its address remains reserved, queued outcome history is retained for the
+configured period, and new posts/retries stop.
+
 ## Empty HMAC Key Recovery
 
 An error similar to the following means the active Worker received an empty
