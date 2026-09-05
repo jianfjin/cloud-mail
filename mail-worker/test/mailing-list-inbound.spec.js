@@ -70,6 +70,22 @@ describe('mailing-list inbound acceptance', () => {
 		expect(sourceObjects.get(post.source_r2_key)).toContain('Private source');
 	});
 
+	it('treats a matching post that is still staging as the same accepted message', async () => {
+		await env.db.prepare(
+			"INSERT INTO mailing_list_post (list_id, source_fingerprint, sender_email, policy_snapshot, state) VALUES (1, 'message-staging', 'sender@example.com', '{}', 'staging')",
+		).run();
+
+		await expect(mailingListInboundService.accept(c, {
+			to: 'team@example.com',
+			sender: 'sender@example.com',
+			fingerprint: 'message-staging',
+			raw: 'From: Sender <sender@example.com>\r\n\r\nDuplicate source',
+		})).resolves.toEqual({accepted: true, postId: 1, duplicate: true});
+
+		expect(queue.sendBatch).not.toHaveBeenCalled();
+		expect((await env.db.prepare('SELECT count(*) AS count FROM mailing_list_post').first()).count).toBe(1);
+	});
+
 	it('rejects a non-member before creating a post', async () => {
 		await expect(mailingListInboundService.accept(c, {to: 'team@example.com', sender: 'blocked@example.com', fingerprint: 'message-2'})).rejects.toThrow('not authorized');
 		expect((await env.db.prepare('SELECT count(*) AS count FROM mailing_list_post').first()).count).toBe(0);

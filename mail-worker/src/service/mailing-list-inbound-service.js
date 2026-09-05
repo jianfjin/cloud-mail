@@ -49,6 +49,16 @@ async function rollbackAcceptance(c, {postId, sourceR2Key, quotaClaimed, listId,
 	}
 }
 
+async function duplicateAcceptance(c, listId, fingerprint) {
+	const existing = await c.env.db.prepare(
+		'SELECT post_id, state FROM mailing_list_post WHERE list_id = ? AND source_fingerprint = ?',
+	).bind(listId, fingerprint).first();
+	if (existing && ['staging', 'queued', 'accepted'].includes(existing.state)) {
+		return {accepted: true, postId: existing.post_id, duplicate: true};
+	}
+	return null;
+}
+
 const mailingListInboundService = {
 	async accept(c, {to, sender, fingerprint, raw}) {
 		const list = await c.env.db.prepare(
@@ -77,12 +87,11 @@ const mailingListInboundService = {
 			throw new BizError('Mailing list delivery unavailable');
 		}
 
+		const duplicate = await duplicateAcceptance(c, list.list_id, fingerprint);
+		if (duplicate) return duplicate;
 		const existing = await c.env.db.prepare(
-			'SELECT post_id, state FROM mailing_list_post WHERE list_id = ? AND source_fingerprint = ?',
+			'SELECT post_id FROM mailing_list_post WHERE list_id = ? AND source_fingerprint = ?',
 		).bind(list.list_id, fingerprint).first();
-		if (existing?.state === 'accepted') {
-			return {accepted: true, postId: existing.post_id, duplicate: true};
-		}
 		if (existing) throw new BizError('Mailing list post is already being processed');
 
 		const internalAddresses = await internalMemberAddresses(c, members);
@@ -166,6 +175,10 @@ const mailingListInboundService = {
 
 			return {accepted: true, postId, duplicate: false};
 		} catch (error) {
+			if (!postId) {
+				const concurrentDuplicate = await duplicateAcceptance(c, list.list_id, fingerprint);
+				if (concurrentDuplicate) return concurrentDuplicate;
+			}
 			await rollbackAcceptance(c, {postId, sourceR2Key, quotaClaimed, listId: list.list_id, day});
 			if (error instanceof BizError) throw error;
 			console.error('Mailing-list acceptance failed');
