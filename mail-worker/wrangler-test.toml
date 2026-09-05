@@ -15,10 +15,19 @@ database_id = "e65f099d-796d-4eaa-8dff-529b368b20db"		#d1数据库id
 binding = "kv"			#kv绑定名默认不可修改
 id = "9be10cd058e04c55b526f8c0c116f50c"					#kv数据库id
 
-#(可选)
-#[[r2_buckets]]
-#binding = "r2"			#r2对象存储绑定名默认不可修改
-#bucket_name = "test-email"		#r2对象存储桶的名字
+[[r2_buckets]]
+binding = "r2"			#r2对象存储绑定名默认不可修改
+bucket_name = "cloud-mail-test"		#r2对象存储桶的名字
+
+[[queues.producers]]
+binding = "mailingListQueue"
+queue = "cloud-mail-test-mailing-list"
+
+[[queues.consumers]]
+queue = "cloud-mail-test-mailing-list"
+max_batch_size = 10
+max_batch_timeout = 30
+max_retries = 0
 
 [assets]
 binding = "assets"		#静态资源绑定名默认不可修改

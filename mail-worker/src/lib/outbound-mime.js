@@ -96,6 +96,15 @@ function bodyPart({ text, html, attachments }) {
 	].join('\r\n');
 }
 
+function splitEntity(entity) {
+	const separator = entity.indexOf('\r\n\r\n');
+	if (separator === -1) return {headers: '', body: entity};
+	return {
+		headers: entity.slice(0, separator),
+		body: entity.slice(separator + 4),
+	};
+}
+
 export function buildRawMime({
 	name,
 	accountEmail,
@@ -129,9 +138,12 @@ export function buildRawMime({
 	for (const [name, value] of Object.entries(customHeaders)) {
 		const safeName = sanitizeHeader(name);
 		const safeValue = sanitizeHeader(value);
-		if (safeName && safeValue) headers.push(safeName + ': ' + safeValue);
+		if (/^X-Cloud-Mail-[A-Za-z0-9-]+$/i.test(safeName) && safeValue) {
+			headers.push(safeName + ': ' + safeValue);
+		}
 	}
 
 	const parts = attachments.filter(attachment => attachment?.content);
-	return `${headers.join('\r\n')}\r\n\r\n${bodyPart({ text, html, attachments: parts })}\r\n`;
+	const entity = splitEntity(bodyPart({ text, html, attachments: parts }));
+	return `${headers.concat(entity.headers).filter(Boolean).join('\r\n')}\r\n\r\n${entity.body}\r\n`;
 }

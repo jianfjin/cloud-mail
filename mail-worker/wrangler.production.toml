@@ -18,6 +18,16 @@ id = "00b08442a72046d686fefa1ab33d4708"
 binding = "r2"
 bucket_name = "cloud-mail-r2"
 
+[[queues.producers]]
+binding = "mailingListQueue"
+queue = "cloud-mail-mailing-list"
+
+[[queues.consumers]]
+queue = "cloud-mail-mailing-list"
+max_batch_size = 10
+max_batch_timeout = 30
+max_retries = 0
+
 [ai]
 binding = "ai"
 

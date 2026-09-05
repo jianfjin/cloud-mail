@@ -90,4 +90,18 @@ describe('outbound recipient providers', () => {
 		expect(raw).toContain('X-Cloud-Mail-Original-From: sender@example.com');
 		expect(raw).not.toContain('blind@example.net');
 	});
+
+	it('limits custom raw-MIME headers to the Cloud Mail namespace', () => {
+		const raw = buildRawMime({
+			...message,
+			headers: {
+				Bcc: 'leak@example.net',
+				'X-Cloud-Mail-Original-From': 'sender@example.com',
+			},
+		});
+
+		expect(raw).not.toMatch(/^Bcc:/m);
+		expect(raw).not.toContain('leak@example.net');
+		expect(raw).toContain('X-Cloud-Mail-Original-From: sender@example.com');
+	});
 });

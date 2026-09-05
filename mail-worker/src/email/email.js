@@ -13,6 +13,33 @@ import telegramService from '../service/telegram-service';
 import aiService from '../service/ai-service';
 import webhookService from '../service/webhook-service';
 import { prepareCalendarReceipt } from './calendar-receipt';
+import BizError from '../error/biz-error';
+import mailingListInboundService from '../service/mailing-list-inbound-service';
+
+async function mailingListFingerprint(parsedEmail, raw) {
+	if (parsedEmail.messageId) return parsedEmail.messageId;
+	const bytes = new TextEncoder().encode(raw);
+	const hash = await crypto.subtle.digest('SHA-256', bytes);
+	return 'sha256:' + Array.from(new Uint8Array(hash)).map(byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+export async function interceptMailingListMessage({message, env, parsedEmail, raw, accept = mailingListInboundService.accept}) {
+	try {
+		const accepted = await accept({env}, {
+			to: message.to,
+			sender: parsedEmail.from?.address || '',
+			fingerprint: await mailingListFingerprint(parsedEmail, raw),
+			raw,
+		});
+		return Boolean(accepted);
+	} catch (error) {
+		if (error instanceof BizError) {
+			message.setReject(error.message);
+			return true;
+		}
+		throw error;
+	}
+}
 
 export async function email(message, env, ctx) {
 
@@ -60,6 +87,9 @@ export async function email(message, env, ctx) {
 
 		if (blockFlag) {
 			message.setReject('Message rejected');
+			return;
+		}
+		if (await interceptMailingListMessage({message, env, parsedEmail: email, raw: content})) {
 			return;
 		}
 

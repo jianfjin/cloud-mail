@@ -6,6 +6,19 @@ import emailService from './service/email-service';
 import kvObjService from './service/kv-obj-service';
 import oauthService from './service/oauth-service';
 import analysisService from './service/analysis-service';
+import mailingListDeliveryService from './service/mailing-list-delivery-service';
+
+export async function processMailingListQueue(batch, env, deliver = mailingListDeliveryService.deliver) {
+	for (const message of batch.messages) {
+		try {
+			await deliver({env}, message.body);
+		} catch (_) {
+			console.error('Mailing-list Queue consumer failed');
+		}
+		message.ack();
+	}
+}
+
 export default {
 	 async fetch(req, env, ctx) {
 
@@ -24,6 +37,9 @@ export default {
 		return env.assets.fetch(req);
 	},
 	email: email,
+	async queue(batch, env) {
+		await processMailingListQueue(batch, env);
+	},
 	async scheduled(c, env, ctx) {
 		if (c.cron === '*/30 * * * *') {
 			await analysisService.refreshEchartsCache({ env })

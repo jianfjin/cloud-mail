@@ -18,9 +18,19 @@ database_id = "a4c1a63a-6ef5-4e6d-8e8c-b6d9e8feb810"
 binding = "kv"
 id = "2io01d4b299e481b9de060ece9e7785c"
 
-#[[r2_buckets]]
-#binding = "r2"
-#bucket_name = "email"
+[[r2_buckets]]
+binding = "r2"
+bucket_name = "cloud-mail-dev"
+
+[[queues.producers]]
+binding = "mailingListQueue"
+queue = "cloud-mail-dev-mailing-list"
+
+[[queues.consumers]]
+queue = "cloud-mail-dev-mailing-list"
+max_batch_size = 10
+max_batch_timeout = 30
+max_retries = 0
 
 #[ai]
 #binding = "ai"
