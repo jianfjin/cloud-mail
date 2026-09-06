@@ -87,6 +87,7 @@ describe('mailing-list reports and retry', () => {
 	it('removes expired reports and their private source while preserving the reserved list identity', async () => {
 		await seedReport();
 		await env.db.prepare("UPDATE mailing_list_post SET create_time = '2026-08-01 00:00:00' WHERE post_id = 1").run();
+		await env.db.prepare("INSERT INTO mailing_list_rejection (list_id, sender_email, safe_reason, create_time) VALUES (1, 'blocked@example.net', 'Sender is not authorized to post to this list', '2026-08-01 00:00:00')").run();
 
 		const result = await mailingListReportService.cleanup(c, new Date('2026-09-05T00:00:00Z'));
 		expect(result).toEqual({removed: 1, failed: 0});
@@ -94,6 +95,7 @@ describe('mailing-list reports and retry', () => {
 		expect((await env.db.prepare('SELECT count(*) AS count FROM mailing_list').first()).count).toBe(1);
 		expect((await env.db.prepare('SELECT count(*) AS count FROM mailing_list_post').first()).count).toBe(0);
 		expect((await env.db.prepare('SELECT count(*) AS count FROM mailing_list_delivery').first()).count).toBe(0);
+		expect((await env.db.prepare('SELECT count(*) AS count FROM mailing_list_rejection').first()).count).toBe(0);
 
 		await env.db.prepare("INSERT INTO mailing_list_post (list_id, source_fingerprint, sender_email, policy_snapshot, source_r2_key, state, create_time) VALUES (1, 'source-2', 'sender@example.test', '{}', 'mailing-list/1/2/source.eml', 'accepted', '2026-08-01 00:00:00')").run();
 		c.env.r2.delete.mockRejectedValueOnce(new Error('R2 unavailable'));
