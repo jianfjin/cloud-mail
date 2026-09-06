@@ -25,6 +25,16 @@ export default {
 		return env.assets.fetch(req);
 	},
 	email: email,
+	// The live Worker carries a queue-consumer binding (mailingListQueue ->
+	// cloud-mail-mailing-list) from a separate mailing-list build. This no-op
+	// consumer keeps the binding valid so this build can deploy alongside it;
+	// messages are logged and acked (dropped).
+	queue: async (batch, env, ctx) => {
+		for (const message of batch.messages) {
+			console.warn('[queue] dropping mailing-list message id=' + message.id);
+			message.ack();
+		}
+	},
 	async scheduled(c, env, ctx) {
 		if (c.cron === '*/30 * * * *') {
 			await analysisService.refreshEchartsCache({ env })
