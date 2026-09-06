@@ -7,6 +7,7 @@ import zh from '@/i18n/zh.js';
 const mailingListList = vi.fn();
 const mailingListDetail = vi.fn();
 const mailingListMembers = vi.fn();
+const mailingListReport = vi.fn();
 const mailingListReports = vi.fn();
 const mailingListSenders = vi.fn();
 
@@ -28,6 +29,7 @@ vi.mock('@/request/mailing-list.js', () => ({
   mailingListDetail,
   mailingListList,
   mailingListMembers,
+  mailingListReport,
   mailingListReports,
   mailingListRetry: vi.fn(),
   mailingListSenders,
@@ -77,10 +79,12 @@ beforeEach(() => {
   mailingListList.mockReset();
   mailingListDetail.mockReset();
   mailingListMembers.mockReset();
+  mailingListReport.mockReset();
   mailingListReports.mockReset();
   mailingListSenders.mockReset();
   mailingListList.mockResolvedValue([]);
   mailingListMembers.mockResolvedValue([]);
+  mailingListReport.mockResolvedValue(null);
   mailingListReports.mockResolvedValue([]);
   mailingListSenders.mockResolvedValue([]);
 });
@@ -134,6 +138,46 @@ describe('mailing-list administration view', () => {
     await flushPromises();
 
     expect(wrapper.text()).toContain('Members (1 / 3)');
+    wrapper.unmount();
+  });
+
+  it('loads recipient outcomes only after an administrator opens a report', async () => {
+    const list = {
+      list_id: 7,
+      address: 'team@example.com',
+      display_name: 'Team',
+      state: 'enabled',
+      posting_policy: 'members',
+      reply_policy: 'sender',
+      self_delivery: 1,
+      member_limit: null,
+      daily_post_limit: null,
+      effectiveMemberLimit: 3,
+      effectiveDailyPostLimit: 100,
+    };
+    mailingListList.mockResolvedValue([list]);
+    mailingListDetail.mockResolvedValue(list);
+    mailingListReports.mockResolvedValue([{
+      postId: 11,
+      sender: 'sender@example.net',
+      acceptedAt: '2026-09-05 10:00:00',
+      totals: {delivered: 1, failed: 0, queued: 0, processing: 0, pending: 0, skipped: 0},
+    }]);
+    mailingListReport.mockResolvedValue({
+      postId: 11,
+      outcomes: [{deliveryId: 5, state: 'delivered', safeReason: ''}],
+      totals: {delivered: 1, failed: 0, queued: 0, processing: 0, pending: 0, skipped: 0},
+    });
+    const wrapper = mountView('en');
+    await flushPromises();
+    await wrapper.get('button.table-row').trigger('click');
+    await flushPromises();
+
+    expect(mailingListReport).not.toHaveBeenCalled();
+    await wrapper.findAll('button.table-row')[1].trigger('click');
+    await flushPromises();
+
+    expect(mailingListReport).toHaveBeenCalledWith(7, 11);
     wrapper.unmount();
   });
 });

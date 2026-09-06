@@ -48,6 +48,10 @@ export function mailingListReports(listId) {
     return http.get('/mailingList/reports', {params: {listId}});
 }
 
+export function mailingListReport(listId, postId) {
+    return http.get('/mailingList/report', {params: {listId, postId}});
+}
+
 export function mailingListRetry(listId, postId) {
     return http.post('/mailingList/retry', {listId, postId});
 }

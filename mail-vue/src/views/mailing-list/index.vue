@@ -154,7 +154,7 @@
       </el-form>
     </el-dialog>
 
-    <el-dialog v-model="showReport" :title="$t('mailingListReport')" width="min(680px, calc(100% - 24px))">
+    <el-dialog v-model="showReport" :title="$t('mailingListReport')" width="min(680px, calc(100% - 24px))" :aria-busy="reportLoading">
       <div v-if="activeReport" class="report-head">
         <div><span>{{ $t('mailingListSender') }}</span>{{ activeReport.sender }}</div>
         <div><span>{{ $t('mailingListAcceptedAt') }}</span>{{ activeReport.acceptedAt }}</div>
@@ -187,6 +187,7 @@ import {
   mailingListDetail,
   mailingListList,
   mailingListMembers,
+  mailingListReport,
   mailingListReports,
   mailingListRetry,
   mailingListSenders,
@@ -199,6 +200,7 @@ const loading = ref(false);
 const saving = ref(false);
 const creating = ref(false);
 const retrying = ref(false);
+const reportLoading = ref(false);
 const search = ref('');
 const lists = ref([]);
 const selected = ref(null);
@@ -337,19 +339,30 @@ async function removeSender(row) {
   }
 }
 
-function openReport(report) {
-  activeReport.value = report;
+async function openReport(report) {
+  if (!selected.value) return;
+  activeReport.value = null;
   showReport.value = true;
+  reportLoading.value = true;
+  try {
+    activeReport.value = await mailingListReport(selected.value.list_id, report.postId);
+  } catch (error) {
+    showReport.value = false;
+    notifyError(error);
+  } finally {
+    reportLoading.value = false;
+  }
 }
 
 async function retryFailed() {
   if (!selected.value || !activeReport.value) return;
   retrying.value = true;
   try {
-    const result = await mailingListRetry(selected.value.list_id, activeReport.value.postId);
+    const postId = activeReport.value.postId;
+    const result = await mailingListRetry(selected.value.list_id, postId);
     ElMessage.success(t('mailingListRetryQueued', {count: result.requeued}));
     reports.value = await mailingListReports(selected.value.list_id);
-    activeReport.value = reports.value.find(report => report.postId === activeReport.value.postId) || null;
+    activeReport.value = await mailingListReport(selected.value.list_id, postId);
   } catch (error) {
     notifyError(error);
   } finally {

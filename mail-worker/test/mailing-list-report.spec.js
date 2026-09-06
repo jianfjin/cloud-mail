@@ -53,6 +53,20 @@ describe('mailing-list reports and retry', () => {
 		expect(serialized).not.toContain('failed@example.net');
 	});
 
+	it('returns list report summaries without loading every recipient outcome', async () => {
+		await seedReport();
+
+		const reports = await mailingListReportService.reports(c, 1);
+
+		expect(reports).toEqual([
+			expect.objectContaining({
+				postId: 1,
+				totals: {delivered: 1, failed: 1, queued: 0, processing: 0, pending: 0, skipped: 0},
+			}),
+		]);
+		expect(reports[0]).not.toHaveProperty('outcomes');
+	});
+
 	it('requeues only failed recipients once and refuses retries while the list is disabled', async () => {
 		await seedReport();
 		const retry = await mailingListReportService.retry(c, 1, 1);

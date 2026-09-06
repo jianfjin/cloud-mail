@@ -19,6 +19,17 @@ function reportTotals(outcomes) {
 	return totals;
 }
 
+function rowTotals(row) {
+	return {
+		delivered: Number(row.delivered || 0),
+		failed: Number(row.failed || 0),
+		queued: Number(row.queued || 0),
+		processing: Number(row.processing || 0),
+		pending: Number(row.pending || 0),
+		skipped: Number(row.skipped || 0),
+	};
+}
+
 async function postForList(c, listId, postId) {
 	return c.env.db.prepare(
 		'SELECT p.post_id, p.sender_email, p.create_time, p.state AS post_state, p.source_r2_key, ' +
@@ -55,10 +66,34 @@ const mailingListReportService = {
 	},
 
 	async reports(c, listId) {
-		const posts = (await c.env.db.prepare(
-			'SELECT post_id FROM mailing_list_post WHERE list_id = ? ORDER BY post_id DESC',
+		const reports = (await c.env.db.prepare(
+			'SELECT p.post_id, p.sender_email, p.create_time, p.state AS post_state, ' +
+			'l.list_id, l.address, l.display_name, ' +
+			"SUM(CASE WHEN d.state = 'delivered' THEN 1 ELSE 0 END) AS delivered, " +
+			"SUM(CASE WHEN d.state = 'failed' THEN 1 ELSE 0 END) AS failed, " +
+			"SUM(CASE WHEN d.state = 'queued' THEN 1 ELSE 0 END) AS queued, " +
+			"SUM(CASE WHEN d.state = 'processing' THEN 1 ELSE 0 END) AS processing, " +
+			"SUM(CASE WHEN d.state = 'pending' THEN 1 ELSE 0 END) AS pending, " +
+			"SUM(CASE WHEN d.state = 'skipped' THEN 1 ELSE 0 END) AS skipped " +
+			'FROM mailing_list_post p ' +
+			'JOIN mailing_list l ON l.list_id = p.list_id ' +
+			'LEFT JOIN mailing_list_delivery d ON d.post_id = p.post_id ' +
+			'WHERE p.list_id = ? ' +
+			'GROUP BY p.post_id, p.sender_email, p.create_time, p.state, l.list_id, l.address, l.display_name ' +
+			'ORDER BY p.post_id DESC',
 		).bind(Number(listId)).all()).results;
-		return Promise.all(posts.map(post => this.report(c, listId, post.post_id)));
+		return reports.map(report => ({
+			postId: report.post_id,
+			list: {
+				listId: report.list_id,
+				address: report.address,
+				displayName: report.display_name,
+			},
+			sender: report.sender_email,
+			acceptedAt: report.create_time,
+			state: report.post_state,
+			totals: rowTotals(report),
+		}));
 	},
 
 	async retry(c, listId, postId) {
