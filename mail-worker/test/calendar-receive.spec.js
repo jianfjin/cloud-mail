@@ -44,7 +44,8 @@ async function resetEmailSchema() {
 			message TEXT,
 			unread INTEGER NOT NULL DEFAULT 0,
 			create_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
-			is_del INTEGER NOT NULL DEFAULT 0
+			is_del INTEGER NOT NULL DEFAULT 0,
+			search_dirty INTEGER NOT NULL DEFAULT 1
 		)
 	`).run();
 	await env.db.prepare(`

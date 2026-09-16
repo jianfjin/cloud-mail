@@ -7,6 +7,7 @@ import kvObjService from './service/kv-obj-service';
 import r2Service from './service/r2-service';
 import oauthService from './service/oauth-service';
 import analysisService from './service/analysis-service';
+import emailSearchIndexService from './service/email-search-index-service';
 export default {
 	 async fetch(req, env, ctx) {
 
@@ -45,6 +46,7 @@ export default {
 		await userService.resetDaySendCount({ env })
 		await emailService.completeReceiveAll({ env })
 		await emailService.autoClean({ env })
+		await emailSearchIndexService.scheduledMaintenance({ env })
 		await analysisService.refreshEchartsCache({ env })
 		await oauthService.clearNoBindOathUser({ env })
 	},
