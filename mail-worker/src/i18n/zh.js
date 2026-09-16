@@ -74,6 +74,9 @@ const zh = {
 	notAdmin: '输入的邮箱不是管理员邮箱',
 	emailExistDatabase: '有邮箱已存在数据库中',
 	notConfigOss: '对象存储未配置',
+	searchInvalid: '搜索请求无效',
+	searchUnavailable: '搜索服务暂时不可用',
+	searchRateLimited: '搜索请求过于频繁，请稍后重试',
 	perms: {
 		"邮件": "邮件",
 		"邮件发送": "邮件发送",
