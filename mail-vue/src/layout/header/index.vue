@@ -9,6 +9,7 @@
         <Icon icon="material-symbols:edit-outline-sharp" width="22" height="22"/>
       </div>
     </div>
+    <email-search class="header-search" @search="goToSearch" />
     <div class="toolbar">
       <div v-if="uiStore.dark" class="sun-icon icon-item" @click="openDark($event)">
         <Icon icon="mingcute:sun-fill"/>
@@ -85,6 +86,8 @@ import {useSettingStore} from "@/store/setting.js";
 import {hasPerm} from "@/perm/perm.js"
 import {useI18n} from "vue-i18n";
 import {setExtend} from "@/utils/day.js"
+import EmailSearch from '@/components/email-search/index.vue'
+import {createSearchRoute} from '@/utils/email-search.js'
 
 const {t} = useI18n();
 const route = useRoute();
@@ -240,6 +243,15 @@ function changeAside() {
   uiStore.asideShow = !uiStore.asideShow
 }
 
+function goToSearch(criteria) {
+  const destination = createSearchRoute(criteria)
+  if (!destination) {
+    ElMessage({message: t('searchStorageUnavailable'), type: 'error', plain: true})
+    return
+  }
+  router.push(destination)
+}
+
 function clickLogout() {
   logoutLoading.value = true
   logout().then(() => {
@@ -361,12 +373,14 @@ function formatName(email) {
   display: grid;
   height: 100%;
   gap: 10px;
-  grid-template-columns: auto auto 1fr;
+  grid-template-columns: auto auto minmax(260px, 640px) 1fr;
 }
 
 .header.not-send {
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto minmax(260px, 640px) 1fr;
 }
+
+.header-search { align-self: center; justify-self: center; }
 
 .writer-box {
   cursor: pointer;
@@ -475,5 +489,12 @@ function formatName(email) {
 
 .el-tooltip__trigger:first-child:focus-visible {
   outline: unset;
+}
+
+@media (max-width: 767px) {
+  .header, .header.not-send { grid-template-columns: auto minmax(0, 1fr) auto; gap: 5px; }
+  .header-search { width: 100%; }
+  .breadcrumb-item { display: none; }
+  .writer-box { display: none; }
 }
 </style>
