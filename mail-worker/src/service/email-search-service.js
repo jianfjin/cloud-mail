@@ -2,8 +2,8 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import orm from '../entity/orm';
 import email from '../entity/email';
 import account from '../entity/account';
-import { emailListColumns } from '../lib/email-list-columns';
-import { isDel } from '../const/entity-const';
+import { EMAIL_LIST_TEXT_LEN, emailListColumns } from '../lib/email-list-columns';
+import { attConst, emailConst, isDel } from '../const/entity-const';
 import BizError from '../error/biz-error';
 import { t } from '../i18n/i18n';
 import emailService from './email-service';
@@ -65,7 +65,7 @@ const BRIEF_COLUMNS_SQL = `
 	CASE WHEN e.calendar_data IS NULL THEN 0 ELSE 1 END AS "hasCalendar",
 	CASE WHEN trim(coalesce(e.text, '')) != '' THEN NULL ELSE trim(replace(replace(replace(replace(replace(replace(
 		coalesce(e.content, ''), char(13), ''), char(10), ''), char(9), ' '), '  ', ' '), '  ', ' '), '> <', '><')) END AS content,
-	substr(coalesce(e.text, ''), 1, 300) AS text,
+	substr(coalesce(e.text, ''), 1, ${EMAIL_LIST_TEXT_LEN}) AS text,
 	CASE WHEN EXISTS (
 		SELECT 1 FROM star result_star
 		WHERE result_star.email_id = e.email_id AND result_star.user_id = ?
@@ -263,9 +263,9 @@ function positiveMatch(criteria) {
 function compilePredicates(request, userId, { withCursor }) {
 	const conditions = [
 		'e.user_id = ?',
-		'e.is_del = 0',
+		`e.is_del = ${isDel.NORMAL}`,
 		'a.user_id = ?',
-		'a.is_del = 0',
+		`a.is_del = ${isDel.NORMAL}`,
 	];
 	const bindings = [userId, userId];
 	const positive = positiveMatch(request.criteria);
@@ -283,8 +283,8 @@ function compilePredicates(request, userId, { withCursor }) {
 		bindings.push(tokenExpression(request.criteria.doesntHave, 'OR'));
 	}
 
-	if (request.criteria.location === 'inbox') conditions.push('e.type = 0');
-	if (request.criteria.location === 'sent') conditions.push('e.type = 1');
+	if (request.criteria.location === 'inbox') conditions.push(`e.type = ${emailConst.type.RECEIVE}`);
+	if (request.criteria.location === 'sent') conditions.push(`e.type = ${emailConst.type.SEND}`);
 	if (request.criteria.location === 'starred') {
 		conditions.push(`EXISTS (
 			SELECT 1 FROM star scope_star
@@ -301,7 +301,7 @@ function compilePredicates(request, userId, { withCursor }) {
 			SELECT 1 FROM attachments downloadable_att
 			WHERE downloadable_att.email_id = e.email_id
 				AND downloadable_att.user_id = e.user_id
-				AND downloadable_att.type = 0
+				AND downloadable_att.type = ${attConst.type.ATT}
 				AND downloadable_att.content_id IS NULL
 		)`);
 	}

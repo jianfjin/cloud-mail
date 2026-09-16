@@ -1,11 +1,10 @@
 <template>
-  <div class="email-search" role="search" @keydown.esc.prevent="cancel">
+  <div class="email-search" role="search" @keydown.esc.prevent="close">
     <div class="email-search__bar">
-      <button class="email-search__mobile-back" type="button" :aria-label="$t('closeSearch')" @click="cancel">
+      <button class="email-search__mobile-back" type="button" :aria-label="$t('closeSearch')" @click="close">
         <Icon icon="ep:arrow-left" />
       </button>
       <input
-        ref="quickInput"
         v-model="quickQuery"
         data-testid="email-search-quick"
         class="email-search__input"
@@ -32,13 +31,14 @@
     </div>
 
     <section
+      ref="advancedPanel"
       id="email-search-advanced-panel"
       data-testid="email-search-panel"
       class="email-search__panel"
       :aria-hidden="String(!expanded)"
       :hidden="!expanded"
     >
-      <button class="email-search__panel-close" type="button" :aria-label="$t('closeSearch')" @click="cancel">
+      <button class="email-search__panel-close" type="button" :aria-label="$t('closeSearch')" @click="close">
         <Icon icon="ep:close" />
       </button>
       <div class="email-search__fields">
@@ -70,7 +70,7 @@
       <p v-if="error" class="email-search__error" role="alert">{{ error }}</p>
       <div class="email-search__actions">
         <button type="button" @click="reset">{{ $t('reset') }}</button>
-        <button type="button" @click="cancel">{{ $t('cancel') }}</button>
+        <button type="button" @click="close">{{ $t('cancel') }}</button>
         <button data-testid="email-search-submit" type="button" class="email-search__primary" @click="submitAdvanced">{{ $t('search') }}</button>
       </div>
     </section>
@@ -80,11 +80,11 @@
 <script setup>
 import {computed, nextTick, ref} from 'vue'
 import {Icon} from '@iconify/vue'
-import {emptySearchDraft, normalizeSearchCriteria} from '@/utils/email-search.js'
+import {DATE_LIMITS, emptySearchDraft, normalizeSearchCriteria} from '@/utils/email-search.js'
 
 const emit = defineEmits(['search'])
-const quickInput = ref(null)
 const advancedTrigger = ref(null)
+const advancedPanel = ref(null)
 const expanded = ref(false)
 const quickQuery = ref('')
 const draft = ref(emptySearchDraft())
@@ -94,20 +94,19 @@ const textFields = [
   {key: 'from', label: 'from'}, {key: 'to', label: 'recipient'}, {key: 'subject', label: 'subject'},
   {key: 'hasWords', label: 'hasWords'}, {key: 'doesntHave', label: 'doesntHave'},
 ]
-const dateLimit = computed(() => ({day: 365, week: 52, month: 120, year: 10}[draft.value.date.unit]))
+const dateLimit = computed(() => DATE_LIMITS[draft.value.date.unit])
 
 function cloneDraft() { return JSON.parse(JSON.stringify(draft.value)) }
 function openAdvanced() {
   expanded.value = !expanded.value
   error.value = ''
-  if (expanded.value) nextTick(() => document.querySelector('#email-search-advanced-panel input')?.focus())
+  if (expanded.value) nextTick(() => advancedPanel.value?.querySelector('input')?.focus())
 }
 function close() {
   expanded.value = false
   error.value = ''
   nextTick(() => advancedTrigger.value?.focus())
 }
-function cancel() { close() }
 function reset() { draft.value = emptySearchDraft(); dateEnabled.value = true; error.value = '' }
 function submitQuick() {
   const query = quickQuery.value.trim()

@@ -1107,10 +1107,15 @@ const emailService = {
 		if (emailIds.length > 0) {
 
 			const attList = await attService.selectByEmailIds(c, emailIds);
+			const attachmentsByEmailId = new Map();
+			for (const attachment of attList) {
+				const attachments = attachmentsByEmailId.get(attachment.emailId) || [];
+				attachments.push(attachment);
+				attachmentsByEmailId.set(attachment.emailId, attachments);
+			}
 
 			list.forEach(emailRow => {
-				const atts = attList.filter(attRow => attRow.emailId === emailRow.emailId);
-				emailRow.attList = atts;
+				emailRow.attList = attachmentsByEmailId.get(emailRow.emailId) || [];
 			});
 		}
 	},

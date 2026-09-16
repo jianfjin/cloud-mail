@@ -1,6 +1,6 @@
 const STORAGE_PREFIX = 'cloud-mail:search:'
 const SIZE_UNITS = {KB: 1024, MB: 1024 ** 2, GB: 1024 ** 3}
-const DATE_LIMITS = {day: 365, week: 52, month: 120, year: 10}
+export const DATE_LIMITS = {day: 365, week: 52, month: 120, year: 10}
 const TEXT_FIELDS = ['query', 'from', 'to', 'subject', 'hasWords', 'doesntHave']
 
 function trimmed(value) {

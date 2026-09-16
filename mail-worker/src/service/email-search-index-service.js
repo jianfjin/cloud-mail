@@ -19,7 +19,7 @@ const SOURCE_COLUMNS = [
 ];
 
 const SELECT_SOURCE_SQL = `
-	SELECT email_id, user_id, send_email, name, to_email, to_name,
+	SELECT email_id, send_email, name, to_email, to_name,
 		recipient, cc, bcc, subject, text, content
 	FROM email
 `;

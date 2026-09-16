@@ -3,7 +3,7 @@
     <header class="search-results__header">
       <div>
         <h1>{{ $t('searchMail') }}</h1>
-        <p v-if="total !== null" data-testid="search-total">{{ t('searchResults', total, {total}) }}</p>
+        <p v-if="total !== null" data-testid="search-total">{{ total }} {{ total === 1 ? $t('searchResult') : $t('searchResults') }}</p>
       </div>
       <label>
         <span class="sr-only">{{ $t('searchMail') }}</span>
@@ -50,7 +50,7 @@
 </template>
 
 <script setup>
-import {computed, onActivated, ref, watch} from 'vue'
+import {onActivated, ref, watch} from 'vue'
 import {useRoute, useRouter} from 'vue-router'
 import {useI18n} from 'vue-i18n'
 import {emailDelete, emailSearch, emailSearchDetails} from '@/request/email.js'
@@ -132,11 +132,15 @@ async function search({cursor = null, replace = false} = {}) {
     })
     if (generation !== requestGeneration || data?.generation !== generation) return
     const list = Array.isArray(data?.list) ? data.list : []
-    const seen = new Set(emails.value.map(item => item.emailId))
-    emails.value = replace ? list : [...emails.value, ...list.filter(item => !seen.has(item.emailId))]
+    let append = list
+    if (!replace) {
+      const seen = new Set(emails.value.map(item => item.emailId))
+      append = list.filter(item => !seen.has(item.emailId))
+    }
+    emails.value = replace ? append : [...emails.value, ...append]
     nextCursor.value = data?.nextCursor || null
     if (replace) total.value = Number.isFinite(data?.total) ? data.total : 0
-    await hydrate(list, generation)
+    await hydrate(append, generation)
   } catch (reason) {
     if (generation === requestGeneration) error.value = errorText(reason)
   } finally {
