@@ -305,6 +305,12 @@ function changeStar() {
 }
 
 const handleBack = () => {
+  const returnRoute = emailStore.contentData.returnRoute
+  emailStore.contentData.returnRoute = null
+  if (returnRoute) {
+    router.replace(returnRoute)
+    return
+  }
   router.back()
 }
 
@@ -335,7 +341,7 @@ const handleDelete = () => {
       })
     }
 
-    router.back()
+    handleBack()
   })
 }
 </script>
