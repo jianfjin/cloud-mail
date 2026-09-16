@@ -7,6 +7,12 @@ import { cors } from 'hono/cors';
 app.use('*', cors());
 
 app.onError((err, c) => {
+	if (err.name === 'BizError' && c.req.path.startsWith('/email/search')
+		&& Number.isInteger(err.code) && err.code >= 400 && err.code <= 599) {
+		console.log(err.message);
+		return c.json(result.fail(err.message, err.code), err.code);
+	}
+
 	if (err.name === 'BizError') {
 		console.log(err.message);
 	} else {
@@ -33,5 +39,4 @@ app.onError((err, c) => {
 });
 
 export default app;
-
 

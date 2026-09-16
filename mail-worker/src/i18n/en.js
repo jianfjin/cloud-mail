@@ -74,6 +74,9 @@ const en = {
 	notAdmin: 'The entered email is not an administrator email',
 	emailExistDatabase: 'Email already exists in the database',
 	notConfigOss: 'Object storage not configured',
+	searchInvalid: 'Invalid search request',
+	searchUnavailable: 'Search is temporarily unavailable',
+	searchRateLimited: 'Too many search requests. Try again later',
 	perms: {
 		"邮件": "Emails",
 		"邮件发送": "Send Email",

@@ -95,7 +95,7 @@ const premKey = {
 app.use('*', async (c, next) => {
 
 	const path = c.req.path;
-	if (path === '/email/calendar-preview' || path.startsWith('/email/calendar-response')) {
+	if (path.startsWith('/email/search') || path === '/email/calendar-preview' || path.startsWith('/email/calendar-response')) {
 		c.header('Cache-Control', 'private, no-store');
 	}
 

@@ -16,6 +16,15 @@ export function emailRead(emailIds) {
     return http.put('/email/read', {emailIds})
 }
 
+// Search deliberately uses POST: criteria must never be copied into a URL.
+export function emailSearch(params) {
+    return http.post('/email/search', params, {noMsg: true})
+}
+
+export function emailSearchDetails(params) {
+    return http.post('/email/search/details', params, {noMsg: true})
+}
+
 export function emailCalendarPreview(emailId) {
     return http.post('/email/calendar-preview', {emailId}, {noMsg: true})
 }

@@ -15,7 +15,7 @@ function sqlStripWhitespace(column) {
 		'> <', '><'))`;
 }
 
-const { calendarData, ...publicEmailColumns } = getTableColumns(email);
+const { calendarData, searchDirty, ...publicEmailColumns } = getTableColumns(email);
 const hasCalendar = sql`CASE WHEN ${calendarData} IS NULL THEN 0 ELSE 1 END`.mapWith(Number).as('has_calendar');
 
 /** 完整查询：排除内部日历数据，只暴露无敏感信息的存在标记 */

@@ -28,12 +28,21 @@ import calendarResponseService from './calendar-response-service';
 import { buildRawMime } from '../lib/outbound-mime';
 import { normalizeRecipients, RecipientValidationError } from '../lib/recipient-utils';
 import { submitRawSmtp } from './smtp-submit-service';
+import emailSearchIndexService from './email-search-index-service';
 
 const MAX_EXTERNAL_RECIPIENTS = 50;
 
 async function createCloudflareRawEmail(from, recipient, rawMessage) {
 	const { EmailMessage } = await import('cloudflare:email');
 	return new EmailMessage(from, recipient, rawMessage);
+}
+
+async function cleanupSearchDocuments(c, emailIds) {
+	try {
+		await emailSearchIndexService.removeDocumentsBestEffort(c, emailIds);
+	} catch {
+		// The source row is authoritative; derived-index cleanup is retryable.
+	}
 }
 
 const emailService = {
@@ -958,6 +967,7 @@ const emailService = {
 		await attService.removeByEmailIds(c, emailIds);
 		await starService.removeByEmailIds(c, emailIds);
 		await orm(c).delete(email).where(inArray(email.emailId, emailIds)).run();
+		await cleanupSearchDocuments(c, emailIds);
 	},
 
 	async physicsDeleteUserIds(c, userIds) {
@@ -1097,10 +1107,15 @@ const emailService = {
 		if (emailIds.length > 0) {
 
 			const attList = await attService.selectByEmailIds(c, emailIds);
+			const attachmentsByEmailId = new Map();
+			for (const attachment of attList) {
+				const attachments = attachmentsByEmailId.get(attachment.emailId) || [];
+				attachments.push(attachment);
+				attachmentsByEmailId.set(attachment.emailId, attachments);
+			}
 
 			list.forEach(emailRow => {
-				const atts = attList.filter(attRow => attRow.emailId === emailRow.emailId);
-				emailRow.attList = atts;
+				emailRow.attList = attachmentsByEmailId.get(emailRow.emailId) || [];
 			});
 		}
 	},
@@ -1228,6 +1243,7 @@ const emailService = {
 		await calendarResponseService.removeByEmailIds(c, emailIds);
 
 		await orm(c).delete(email).where(conditions.length > 1 ? and(...conditions) : conditions[0]).run();
+		await cleanupSearchDocuments(c, emailIds);
 	},
 
 	async physicsDeleteByAccountId(c, accountId) {

@@ -32,6 +32,16 @@ const routes = [
                 }
             },
             {
+                path: '/search',
+                name: 'search',
+                component: () => import('@/views/search/index.vue'),
+                meta: {
+                    title: 'searchMail',
+                    name: 'search',
+                    menu: false,
+                }
+            },
+            {
                 path: '/settings',
                 name: 'setting',
                 component: () => import('@/views/setting/index.vue'),

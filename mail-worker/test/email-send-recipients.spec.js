@@ -19,7 +19,7 @@ async function resetSchema() {
 		'bcc TEXT DEFAULT \'[]\', recipient TEXT, to_email TEXT NOT NULL DEFAULT \'\', to_name TEXT NOT NULL DEFAULT \'\',',
 		'in_reply_to TEXT NOT NULL DEFAULT \'\', relation TEXT NOT NULL DEFAULT \'\', message_id TEXT NOT NULL DEFAULT \'\',',
 		'type INTEGER NOT NULL DEFAULT 0, status INTEGER NOT NULL DEFAULT 0, resend_email_id TEXT, message TEXT, unread INTEGER NOT NULL DEFAULT 0,',
-		'create_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL, is_del INTEGER NOT NULL DEFAULT 0',
+		'create_time DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL, is_del INTEGER NOT NULL DEFAULT 0, search_dirty INTEGER NOT NULL DEFAULT 1',
 		')',
 	].join(' ')).run();
 	await env.db.prepare([
