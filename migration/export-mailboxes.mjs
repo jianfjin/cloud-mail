@@ -7,6 +7,7 @@ const argv = Object.fromEntries(process.argv.slice(2).map(v => {
 }));
 const input=argv.input||'input/emails.json', attachmentsInput=argv.attachments||'input/attachments.json';
 const r2Dir=argv.r2||'r2', outDir=argv.out||'output', mailboxFilter=argv.mailbox?.toLowerCase();
+const accountIdFilter=argv['account-id'] ? Number(argv['account-id']) : null;
 const afterId=Number(argv['after-id']||0), maxId=argv['max-id']?Number(argv['max-id']):Number.MAX_SAFE_INTEGER;
 
 function unwrap(raw){ const a=Array.isArray(raw)?raw:(raw.result||raw.results||[]); return a.flatMap(x=>Array.isArray(x?.results)?x.results:[x]); }
@@ -46,10 +47,13 @@ async function makeMime(row,atts){
 const rows=unwrap(JSON.parse(await fs.readFile(input,'utf8')));
 let attRows=[];try{attRows=unwrap(JSON.parse(await fs.readFile(attachmentsInput,'utf8')))}catch(e){if(e.code!=='ENOENT')throw e}
 const byEmail=new Map();for(const a of attRows){const k=Number(a.email_id);if(!byEmail.has(k))byEmail.set(k,[]);byEmail.get(k).push(a)}
-const selected=rows.filter(r=>{const id=Number(r.email_id),mb=String(r.account_email||r.to_email||'').toLowerCase();return id>afterId&&id<=maxId&&(!mailboxFilter||mb===mailboxFilter)});
+if (mailboxFilter && !accountIdFilter && !rows.some(r => r.account_email)) {
+  throw new Error('--mailbox requires joined account_email data or --account-id. For direct email-table exports, pass both --mailbox and --account-id.');
+}
+const selected=rows.filter(r=>{const id=Number(r.email_id),mb=String(r.account_email||'').toLowerCase();return id>afterId&&id<=maxId&&(!accountIdFilter||Number(r.account_id)===accountIdFilter)&&(!mailboxFilter||accountIdFilter||mb===mailboxFilter)});
 const manifest=[];let failed=0;
 for(const row of selected){
-  const id=Number(row.email_id), mailbox=String(row.account_email||row.to_email||'unknown').toLowerCase();
+  const id=Number(row.email_id), mailbox=mailboxFilter || String(row.account_email||'unknown').toLowerCase();
   const folder=Number(row.is_del)===1?'Deleted':Number(row.type)===1?'Sent':'Inbox';
   try{
     const {eml,attachmentMeta}=await makeMime(row,byEmail.get(id)||[]);
