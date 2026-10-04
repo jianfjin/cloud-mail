@@ -29,7 +29,7 @@ function normalizeHtmlCharset(html=''){
 }
 function boundary(label,id){return `=_cloudmail_migration_${label}_${id}_${crypto.randomBytes(6).toString('hex')}`}
 function dateHeader(v){const d=new Date(String(v||'').replace(' ','T')+'Z');return Number.isNaN(d.valueOf())?new Date(0).toUTCString():d.toUTCString()}
-function textPart(type,body){const normalized=type==='text/html'?normalizeHtmlCharset(body):body;return `Content-Type: ${type}; charset=UTF-8\\r\\nContent-Transfer-Encoding: base64\\r\\n\\r\\n${encText(normalized)}`}
+function textPart(type,body){const normalized=type==='text/html'?normalizeHtmlCharset(body):body;return [`Content-Type: ${type}; charset=UTF-8`,'Content-Transfer-Encoding: base64','',encText(normalized)].join('\r\n')}
 async function attachmentPart(a){
   const file=path.join(r2Dir,a.key);
   let data;
