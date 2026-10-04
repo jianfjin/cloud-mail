@@ -42,8 +42,12 @@ function restoreInlineCids(html='',atts=[]){
   // corresponding inline object was never persisted (or is now source-missing).
   // Do not emit dangling cid: references: remove only the broken image src
   // attribute while preserving the rest of the HTML/message for auditability.
-  out=out.replace(/\s+src=(["'])cid:([^"'<>\s]+)\1/gi,(m,q,cid)=>
-    availableCids.has(String(cid).replace(/^<|>$/g,'').toLowerCase())?m:'');
+  // Strip any remaining dangling cid: image reference, including Outlook/Word
+  // variants such as src=cid:foo, SRC="cid:foo", and whitespace around '='.
+  out=out.replace(/\s+src\s*=\s*(?:(["'])cid:([^"'<>\s]+)\1|cid:([^\s>]+))/gi,(m,q,quoted,bare)=>{
+    const cid=String(quoted||bare||'').replace(/^<|>$/g,'').toLowerCase();
+    return availableCids.has(cid)?m:'';
+  });
   return out;
 }
 function boundary(label,id){return `=_cloudmail_migration_${label}_${id}_${crypto.randomBytes(6).toString('hex')}`}
