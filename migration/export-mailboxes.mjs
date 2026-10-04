@@ -2,84 +2,63 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
-const args = Object.fromEntries(process.argv.slice(2).map(v => {
-  const i = v.indexOf('=');
-  return i < 0 ? [v.replace(/^--/, ''), true] : [v.slice(2, i), v.slice(i + 1)];
+const argv = Object.fromEntries(process.argv.slice(2).map(v => {
+  const i=v.indexOf('='); return i<0?[v.replace(/^--/,'') ,true]:[v.slice(2,i),v.slice(i+1)];
 }));
+const input=argv.input||'input/emails.json', attachmentsInput=argv.attachments||'input/attachments.json';
+const r2Dir=argv.r2||'r2', outDir=argv.out||'output', mailboxFilter=argv.mailbox?.toLowerCase();
+const afterId=Number(argv['after-id']||0), maxId=argv['max-id']?Number(argv['max-id']):Number.MAX_SAFE_INTEGER;
 
-const input = args.input || 'input/emails.json';
-const outDir = args.out || 'output';
-const mailboxFilter = args.mailbox?.toLowerCase();
-const afterId = Number(args['after-id'] || 0);
-const maxId = args['max-id'] ? Number(args['max-id']) : Number.MAX_SAFE_INTEGER;
-
-const raw = JSON.parse(await fs.readFile(input, 'utf8'));
-const rows = Array.isArray(raw) ? raw : (raw.result || raw.results || []);
-const normalized = rows.flatMap(x => Array.isArray(x?.results) ? x.results : [x]);
-
-function parseJson(value, fallback=[]) {
-  if (!value) return fallback;
-  try { return typeof value === 'string' ? JSON.parse(value) : value; } catch { return fallback; }
+function unwrap(raw){ const a=Array.isArray(raw)?raw:(raw.result||raw.results||[]); return a.flatMap(x=>Array.isArray(x?.results)?x.results:[x]); }
+function parse(v,f=[]){if(!v)return f;try{return typeof v==='string'?JSON.parse(v):v}catch{return f}}
+function safe(v=''){return String(v).replace(/[\r\n]+/g,' ').trim()}
+function q(v=''){return safe(v).replaceAll('"','')}
+function addr(x){if(!x)return'';if(typeof x==='string')return safe(x);return x.name?`"${q(x.name)}" <${safe(x.address)}>`:safe(x.address)}
+function list(v){return parse(v).map(addr).filter(Boolean).join(', ')}
+function fold64(b){return b.toString('base64').match(/.{1,76}/g)?.join('\r\n')||''}
+function encText(s){return fold64(Buffer.from(String(s||''),'utf8'))}
+function boundary(label,id){return `=_cloudmail_migration_${label}_${id}_${crypto.randomBytes(6).toString('hex')}`}
+function dateHeader(v){const d=new Date(String(v||'').replace(' ','T')+'Z');return Number.isNaN(d.valueOf())?new Date(0).toUTCString():d.toUTCString()}
+function textPart(type,body){return `Content-Type: ${type}; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n${encText(body)}`}
+async function attachmentPart(a){
+  const file=path.join(r2Dir,a.key);
+  const data=await fs.readFile(file);
+  const type=safe(a.mime_type||'application/octet-stream');
+  const name=q(a.filename||path.basename(a.key)||'attachment');
+  const cid=a.content_id?safe(a.content_id).replace(/^<|>$/g,''):null;
+  const disposition=cid||Number(a.type)===1?'inline':'attachment';
+  return {part:[`Content-Type: ${type}; name="${name}"`,'Content-Transfer-Encoding: base64',`Content-Disposition: ${disposition}; filename="${name}"`,cid?`Content-ID: <${cid}>`:null,'',fold64(data)].filter(x=>x!==null).join('\r\n'), bytes:data.length, key:a.key};
 }
-function escHeader(v='') { return String(v).replace(/[\r\n]+/g, ' ').trim(); }
-function addr(x) {
-  if (!x) return '';
-  if (typeof x === 'string') return x;
-  return x.name ? `"${escHeader(x.name).replaceAll('"', '\\"')}" <${x.address}>` : x.address;
-}
-function listHeader(v) { return parseJson(v).map(addr).filter(Boolean).join(', '); }
-function mime(row) {
-  const boundary = 'cloudmail-' + crypto.randomUUID();
-  const from = row.name ? `"${escHeader(row.name).replaceAll('"', '\\"')}" <${row.send_email || ''}>` : (row.send_email || '');
-  const to = listHeader(row.recipient) || row.to_email || '';
-  const headers = [
-    `From: ${from}`, `To: ${to}`,
-    row.cc && parseJson(row.cc).length ? `Cc: ${listHeader(row.cc)}` : null,
-    `Subject: ${escHeader(row.subject || '')}`,
-    `Date: ${new Date((row.create_time || '').replace(' ', 'T') + 'Z').toUTCString()}`,
-    row.message_id ? `Message-ID: ${escHeader(row.message_id)}` : null,
-    row.in_reply_to ? `In-Reply-To: ${escHeader(row.in_reply_to)}` : null,
-    row.relation ? `References: ${escHeader(row.relation)}` : null,
-    'MIME-Version: 1.0',
-    `Content-Type: multipart/alternative; boundary="${boundary}"`
-  ].filter(Boolean);
-  const text = row.text || '';
-  const html = row.content || '';
-  return headers.join('\r\n') + '\r\n\r\n' +
-    `--${boundary}\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n${text}\r\n` +
-    `--${boundary}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n${html}\r\n` +
-    `--${boundary}--\r\n`;
+async function makeMime(row,atts){
+  const id=Number(row.email_id), alt=boundary('alt',id), mixed=boundary('mixed',id), related=boundary('related',id);
+  const from=row.name?`"${q(row.name)}" <${safe(row.send_email||'')}>`:safe(row.send_email||'');
+  const to=list(row.recipient)||safe(row.to_email||'');
+  const headers=[`From: ${from}`,to?`To: ${to}`:null,parse(row.cc).length?`Cc: ${list(row.cc)}`:null,`Subject: ${safe(row.subject||'')}`,`Date: ${dateHeader(row.create_time)}`,row.message_id?`Message-ID: ${safe(row.message_id)}`:null,row.in_reply_to?`In-Reply-To: ${safe(row.in_reply_to)}`:null,row.relation?`References: ${safe(row.relation)}`:null,'MIME-Version: 1.0'].filter(Boolean);
+  const altBody=[`Content-Type: multipart/alternative; boundary="${alt}"`,'',`--${alt}`,textPart('text/plain',row.text||''),`--${alt}`,textPart('text/html',row.content||''),`--${alt}--`].join('\r\n');
+  const inline=[], regular=[], meta=[];
+  for(const a of atts){const p=await attachmentPart(a);meta.push({att_id:a.att_id,key:p.key,bytes:p.bytes,content_id:a.content_id||null});(a.content_id||Number(a.type)===1?inline:regular).push(p.part)}
+  let body=altBody;
+  if(inline.length){body=[`Content-Type: multipart/related; boundary="${related}"`,'',`--${related}`,body,...inline.flatMap(p=>[`--${related}`,p]),`--${related}--`].join('\r\n')}
+  if(regular.length){body=[`Content-Type: multipart/mixed; boundary="${mixed}"`,'',`--${mixed}`,body,...regular.flatMap(p=>[`--${mixed}`,p]),`--${mixed}--`].join('\r\n')}
+  return {eml:headers.join('\r\n')+'\r\n'+body+'\r\n',attachmentMeta:meta};
 }
 
-const selected = normalized.filter(r => {
-  const id = Number(r.email_id);
-  const mailbox = String(r.account_email || r.to_email || '').toLowerCase();
-  return id > afterId && id <= maxId && (!mailboxFilter || mailbox === mailboxFilter);
-});
-
-const manifest = [];
-for (const row of selected) {
-  const mailbox = String(row.account_email || row.to_email || 'unknown').toLowerCase();
-  const folder = Number(row.is_del) === 1 ? 'Deleted' : Number(row.type) === 1 ? 'Sent' : 'Inbox';
-  const eml = mime(row);
-  const dir = path.join(outDir, mailbox, folder);
-  await fs.mkdir(dir, {recursive:true});
-  const file = path.join(dir, String(row.email_id).padStart(10,'0') + '.eml');
-  await fs.writeFile(file, eml);
-  manifest.push({
-    email_id: Number(row.email_id), mailbox, folder,
-    message_id: row.message_id || null,
-    cloudmail_create_time: row.create_time || null,
-    migration_date_source: 'cloudmail_create_time',
-    sha256: crypto.createHash('sha256').update(eml).digest('hex')
-  });
+const rows=unwrap(JSON.parse(await fs.readFile(input,'utf8')));
+let attRows=[];try{attRows=unwrap(JSON.parse(await fs.readFile(attachmentsInput,'utf8')))}catch(e){if(e.code!=='ENOENT')throw e}
+const byEmail=new Map();for(const a of attRows){const k=Number(a.email_id);if(!byEmail.has(k))byEmail.set(k,[]);byEmail.get(k).push(a)}
+const selected=rows.filter(r=>{const id=Number(r.email_id),mb=String(r.account_email||r.to_email||'').toLowerCase();return id>afterId&&id<=maxId&&(!mailboxFilter||mb===mailboxFilter)});
+const manifest=[];let failed=0;
+for(const row of selected){
+  const id=Number(row.email_id), mailbox=String(row.account_email||row.to_email||'unknown').toLowerCase();
+  const folder=Number(row.is_del)===1?'Deleted':Number(row.type)===1?'Sent':'Inbox';
+  try{
+    const {eml,attachmentMeta}=await makeMime(row,byEmail.get(id)||[]);
+    const dir=path.join(outDir,mailbox,folder);await fs.mkdir(dir,{recursive:true});
+    const file=path.join(dir,String(id).padStart(10,'0')+'.eml');await fs.writeFile(file,eml);
+    manifest.push({email_id:id,mailbox,folder,message_id:row.message_id||null,cloudmail_create_time:row.create_time||null,migration_date_source:'cloudmail_create_time',attachments:attachmentMeta,sha256:crypto.createHash('sha256').update(eml).digest('hex')});
+  }catch(e){failed++;console.error(`FAILED email_id=${id}: ${e.message}`)}
 }
-await fs.mkdir(outDir, {recursive:true});
-await fs.writeFile(path.join(outDir,'manifest.json'), JSON.stringify({
-  generated_at: new Date().toISOString(),
-  after_email_id: afterId,
-  max_email_id: selected.length ? Math.max(...selected.map(x=>Number(x.email_id))) : afterId,
-  count: manifest.length,
-  messages: manifest
-}, null, 2));
-console.log(`Exported ${manifest.length} messages to ${outDir}`);
+await fs.mkdir(outDir,{recursive:true});
+await fs.writeFile(path.join(outDir,'manifest.json'),JSON.stringify({generated_at:new Date().toISOString(),after_email_id:afterId,max_email_id:selected.length?Math.max(...selected.map(x=>Number(x.email_id))):afterId,selected:selected.length,exported:manifest.length,failed,messages:manifest},null,2));
+console.log(`Selected ${selected.length}; exported ${manifest.length}; failed ${failed}`);
+if(failed)process.exitCode=1;
