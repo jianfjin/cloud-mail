@@ -1,0 +1,12 @@
+{
+  "jianfeng.jin@edmf.nl": {"target":"jianfeng.jin@edmf.nl","kind":"user"},
+  "lynn.qin@edmf.nl": {"target":"lynn.qin@edmf.nl","kind":"user"},
+  "lu.zhao@edmf.nl": {"target":"lu.zhao@edmf.nl","kind":"user"},
+  "lifang.liu@edmf.nl": {"target":"lifang.liu@edmf.nl","kind":"user"},
+  "bin.qu@edmf.nl": {"target":"bin.qu@edmf.nl","kind":"user"},
+  "ge_yu@edmf.nl": {"target":"ge_yu@edmf.nl","kind":"user"},
+  "xiaohui.ge@edmf.nl": {"target":"xiaohui.ge@edmf.nl","kind":"user"},
+  "ilse.custers@edmf.nl": {"target":"ilse.custers@edmf.nl","kind":"user"},
+  "info@edmf.nl": {"target":"info@edmf.nl","kind":"shared"},
+  "admin@edmf.nl": {"target":"admin@edmf.nl","kind":"shared"}
+}
