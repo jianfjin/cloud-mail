@@ -29,13 +29,21 @@ function normalizeHtmlCharset(html=''){
 }
 function restoreInlineCids(html='',atts=[]){
   let out=String(html);
+  const availableCids=new Set();
   for(const a of atts){
     const cid=a.content_id?safe(a.content_id).replace(/^<|>$/g,''):null;
     if(!cid || !a.key) continue;
+    availableCids.add(cid.toLowerCase());
     const stored='{{domain}}'+String(a.key);
     out=out.split('src="'+stored+'"').join('src="cid:'+cid+'"');
     out=out.split("src='"+stored+"'").join("src='cid:"+cid+"'");
   }
+  // cloud-mail sometimes retained original cid: URLs in HTML even though the
+  // corresponding inline object was never persisted (or is now source-missing).
+  // Do not emit dangling cid: references: remove only the broken image src
+  // attribute while preserving the rest of the HTML/message for auditability.
+  out=out.replace(/\s+src=(["'])cid:([^"'<>\s]+)\1/gi,(m,q,cid)=>
+    availableCids.has(String(cid).replace(/^<|>$/g,'').toLowerCase())?m:'');
   return out;
 }
 function boundary(label,id){return `=_cloudmail_migration_${label}_${id}_${crypto.randomBytes(6).toString('hex')}`}
