@@ -27,6 +27,17 @@ function encodeHeader(v=''){
 function normalizeHtmlCharset(html=''){
   return String(html).replace(/charset\s*=\s*["']?(?:gb2312|gbk|big5|iso-8859-[0-9]+)/gi,'charset=UTF-8');
 }
+function restoreInlineCids(html='',atts=[]){
+  let out=String(html);
+  for(const a of atts){
+    const cid=a.content_id?safe(a.content_id).replace(/^<|>$/g,''):null;
+    if(!cid || !a.key) continue;
+    const stored='{{domain}}'+String(a.key);
+    out=out.split('src="'+stored+'"').join('src="cid:'+cid+'"');
+    out=out.split("src='"+stored+"'").join("src='cid:"+cid+"'");
+  }
+  return out;
+}
 function boundary(label,id){return `=_cloudmail_migration_${label}_${id}_${crypto.randomBytes(6).toString('hex')}`}
 function dateHeader(v){const d=new Date(String(v||'').replace(' ','T')+'Z');return Number.isNaN(d.valueOf())?new Date(0).toUTCString():d.toUTCString()}
 function textPart(type,body){const normalized=type==='text/html'?normalizeHtmlCharset(body):body;return [`Content-Type: ${type}; charset=UTF-8`,'Content-Transfer-Encoding: base64','',encText(normalized)].join('\r\n')}
@@ -52,7 +63,7 @@ async function makeMime(row,atts){
   const effectiveMessageId=sourceMessageId||`<cloudmail-${id}@migration.edmf.nl>`;
   const messageIdSource=sourceMessageId?'source':'generated';
   const headers=[`From: ${from}`,to?`To: ${to}`:null,parse(row.cc).length?`Cc: ${list(row.cc)}`:null,`Subject: ${encodeHeader(row.subject||'')}`,`Date: ${dateHeader(row.create_time)}`,`Message-ID: ${effectiveMessageId}`,row.in_reply_to?`In-Reply-To: ${safe(row.in_reply_to)}`:null,row.relation?`References: ${safe(row.relation)}`:null,'MIME-Version: 1.0'].filter(Boolean);
-  const altBody=[`Content-Type: multipart/alternative; boundary="${alt}"`,'',`--${alt}`,textPart('text/plain',row.text||''),`--${alt}`,textPart('text/html',row.content||''),`--${alt}--`].join('\r\n');
+  const restoredHtml=restoreInlineCids(row.content||'',atts);\n  const altBody=[`Content-Type: multipart/alternative; boundary="${alt}"`,'',`--${alt}`,textPart('text/plain',row.text||''),`--${alt}`,textPart('text/html',restoredHtml),`--${alt}--`].join('\r\n');
   const inline=[], regular=[], meta=[], missing=[];
   for(const a of atts){
     const p=await attachmentPart(a); meta.push(p.meta);
