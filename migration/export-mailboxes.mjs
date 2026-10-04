@@ -8,6 +8,7 @@ const argv = Object.fromEntries(process.argv.slice(2).map(v => {
 const input=argv.input||'input/emails.json', attachmentsInput=argv.attachments||'input/attachments.json';
 const r2Dir=argv.r2||'r2', outDir=argv.out||'output', mailboxFilter=argv.mailbox?.toLowerCase();
 const accountIdFilter=argv['account-id'] ? Number(argv['account-id']) : null;
+const allowMissing=Boolean(argv['allow-missing-attachments']);
 const afterId=Number(argv['after-id']||0), maxId=argv['max-id']?Number(argv['max-id']):Number.MAX_SAFE_INTEGER;
 
 function unwrap(raw){ const a=Array.isArray(raw)?raw:(raw.result||raw.results||[]); return a.flatMap(x=>Array.isArray(x?.results)?x.results:[x]); }
@@ -23,12 +24,17 @@ function dateHeader(v){const d=new Date(String(v||'').replace(' ','T')+'Z');retu
 function textPart(type,body){return `Content-Type: ${type}; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n${encText(body)}`}
 async function attachmentPart(a){
   const file=path.join(r2Dir,a.key);
-  const data=await fs.readFile(file);
+  let data;
+  try { data=await fs.readFile(file); }
+  catch(e) {
+    if(e.code==='ENOENT' && allowMissing) return {missing:true,meta:{att_id:a.att_id,key:a.key,filename:a.filename||null,mime_type:a.mime_type||null,content_id:a.content_id||null,expected_bytes:Number(a.size||0),source_attachment_missing:true}};
+    throw e;
+  }
   const type=safe(a.mime_type||'application/octet-stream');
   const name=q(a.filename||path.basename(a.key)||'attachment');
   const cid=a.content_id?safe(a.content_id).replace(/^<|>$/g,''):null;
   const disposition=cid||Number(a.type)===1?'inline':'attachment';
-  return {part:[`Content-Type: ${type}; name="${name}"`,'Content-Transfer-Encoding: base64',`Content-Disposition: ${disposition}; filename="${name}"`,cid?`Content-ID: <${cid}>`:null,'',fold64(data)].filter(x=>x!==null).join('\r\n'), bytes:data.length, key:a.key};
+  return {missing:false,part:[`Content-Type: ${type}; name="${name}"`,'Content-Transfer-Encoding: base64',`Content-Disposition: ${disposition}; filename="${name}"`,cid?`Content-ID: <${cid}>`:null,'',fold64(data)].filter(x=>x!==null).join('\r\n'),meta:{att_id:a.att_id,key:a.key,filename:a.filename||null,mime_type:a.mime_type||null,content_id:a.content_id||null,bytes:data.length,source_attachment_missing:false}};
 }
 async function makeMime(row,atts){
   const id=Number(row.email_id), alt=boundary('alt',id), mixed=boundary('mixed',id), related=boundary('related',id);
@@ -36,33 +42,37 @@ async function makeMime(row,atts){
   const to=list(row.recipient)||safe(row.to_email||'');
   const headers=[`From: ${from}`,to?`To: ${to}`:null,parse(row.cc).length?`Cc: ${list(row.cc)}`:null,`Subject: ${safe(row.subject||'')}`,`Date: ${dateHeader(row.create_time)}`,row.message_id?`Message-ID: ${safe(row.message_id)}`:null,row.in_reply_to?`In-Reply-To: ${safe(row.in_reply_to)}`:null,row.relation?`References: ${safe(row.relation)}`:null,'MIME-Version: 1.0'].filter(Boolean);
   const altBody=[`Content-Type: multipart/alternative; boundary="${alt}"`,'',`--${alt}`,textPart('text/plain',row.text||''),`--${alt}`,textPart('text/html',row.content||''),`--${alt}--`].join('\r\n');
-  const inline=[], regular=[], meta=[];
-  for(const a of atts){const p=await attachmentPart(a);meta.push({att_id:a.att_id,key:p.key,bytes:p.bytes,content_id:a.content_id||null});(a.content_id||Number(a.type)===1?inline:regular).push(p.part)}
+  const inline=[], regular=[], meta=[], missing=[];
+  for(const a of atts){
+    const p=await attachmentPart(a); meta.push(p.meta);
+    if(p.missing){missing.push(p.meta);continue}
+    (a.content_id||Number(a.type)===1?inline:regular).push(p.part);
+  }
   let body=altBody;
   if(inline.length){body=[`Content-Type: multipart/related; boundary="${related}"`,'',`--${related}`,body,...inline.flatMap(p=>[`--${related}`,p]),`--${related}--`].join('\r\n')}
   if(regular.length){body=[`Content-Type: multipart/mixed; boundary="${mixed}"`,'',`--${mixed}`,body,...regular.flatMap(p=>[`--${mixed}`,p]),`--${mixed}--`].join('\r\n')}
-  return {eml:headers.join('\r\n')+'\r\n'+body+'\r\n',attachmentMeta:meta};
+  return {eml:headers.join('\r\n')+'\r\n'+body+'\r\n',attachmentMeta:meta,missingAttachments:missing};
 }
 
 const rows=unwrap(JSON.parse(await fs.readFile(input,'utf8')));
 let attRows=[];try{attRows=unwrap(JSON.parse(await fs.readFile(attachmentsInput,'utf8')))}catch(e){if(e.code!=='ENOENT')throw e}
 const byEmail=new Map();for(const a of attRows){const k=Number(a.email_id);if(!byEmail.has(k))byEmail.set(k,[]);byEmail.get(k).push(a)}
-if (mailboxFilter && !accountIdFilter && !rows.some(r => r.account_email)) {
-  throw new Error('--mailbox requires joined account_email data or --account-id. For direct email-table exports, pass both --mailbox and --account-id.');
-}
+if (mailboxFilter && !accountIdFilter && !rows.some(r => r.account_email)) throw new Error('--mailbox requires joined account_email data or --account-id. For direct email-table exports, pass both --mailbox and --account-id.');
 const selected=rows.filter(r=>{const id=Number(r.email_id),mb=String(r.account_email||'').toLowerCase();return id>afterId&&id<=maxId&&(!accountIdFilter||Number(r.account_id)===accountIdFilter)&&(!mailboxFilter||accountIdFilter||mb===mailboxFilter)});
-const manifest=[];let failed=0;
+const manifest=[];let failed=0,missingAttachmentRefs=0,messagesWithMissing=0;
 for(const row of selected){
   const id=Number(row.email_id), mailbox=mailboxFilter || String(row.account_email||'unknown').toLowerCase();
   const folder=Number(row.is_del)===1?'Deleted':Number(row.type)===1?'Sent':'Inbox';
   try{
-    const {eml,attachmentMeta}=await makeMime(row,byEmail.get(id)||[]);
+    const {eml,attachmentMeta,missingAttachments}=await makeMime(row,byEmail.get(id)||[]);
     const dir=path.join(outDir,mailbox,folder);await fs.mkdir(dir,{recursive:true});
     const file=path.join(dir,String(id).padStart(10,'0')+'.eml');await fs.writeFile(file,eml);
-    manifest.push({email_id:id,mailbox,folder,message_id:row.message_id||null,cloudmail_create_time:row.create_time||null,migration_date_source:'cloudmail_create_time',attachments:attachmentMeta,sha256:crypto.createHash('sha256').update(eml).digest('hex')});
+    missingAttachmentRefs+=missingAttachments.length;if(missingAttachments.length)messagesWithMissing++;
+    manifest.push({email_id:id,mailbox,folder,message_id:row.message_id||null,cloudmail_create_time:row.create_time||null,migration_date_source:'cloudmail_create_time',source_data_warning:missingAttachments.length?'missing_attachments':null,missing_attachments:missingAttachments,attachments:attachmentMeta,sha256:crypto.createHash('sha256').update(eml).digest('hex')});
   }catch(e){failed++;console.error(`FAILED email_id=${id}: ${e.message}`)}
 }
 await fs.mkdir(outDir,{recursive:true});
-await fs.writeFile(path.join(outDir,'manifest.json'),JSON.stringify({generated_at:new Date().toISOString(),after_email_id:afterId,max_email_id:selected.length?Math.max(...selected.map(x=>Number(x.email_id))):afterId,selected:selected.length,exported:manifest.length,failed,messages:manifest},null,2));
-console.log(`Selected ${selected.length}; exported ${manifest.length}; failed ${failed}`);
+const summary={generated_at:new Date().toISOString(),after_email_id:afterId,max_email_id:selected.length?Math.max(...selected.map(x=>Number(x.email_id))):afterId,selected:selected.length,exported:manifest.length,failed,allow_missing_attachments:allowMissing,attachment_references:attRows.filter(a=>selected.some(r=>Number(r.email_id)===Number(a.email_id))).length,missing_attachment_references:missingAttachmentRefs,messages_with_missing_attachments:messagesWithMissing};
+await fs.writeFile(path.join(outDir,'manifest.json'),JSON.stringify({...summary,messages:manifest},null,2));
+console.log(`Selected ${selected.length}; exported ${manifest.length}; failed ${failed}; missing attachment refs ${missingAttachmentRefs}; affected messages ${messagesWithMissing}`);
 if(failed)process.exitCode=1;
