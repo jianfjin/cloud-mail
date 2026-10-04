@@ -63,7 +63,8 @@ async function makeMime(row,atts){
   const effectiveMessageId=sourceMessageId||`<cloudmail-${id}@migration.edmf.nl>`;
   const messageIdSource=sourceMessageId?'source':'generated';
   const headers=[`From: ${from}`,to?`To: ${to}`:null,parse(row.cc).length?`Cc: ${list(row.cc)}`:null,`Subject: ${encodeHeader(row.subject||'')}`,`Date: ${dateHeader(row.create_time)}`,`Message-ID: ${effectiveMessageId}`,row.in_reply_to?`In-Reply-To: ${safe(row.in_reply_to)}`:null,row.relation?`References: ${safe(row.relation)}`:null,'MIME-Version: 1.0'].filter(Boolean);
-  const restoredHtml=restoreInlineCids(row.content||'',atts);\n  const altBody=[`Content-Type: multipart/alternative; boundary="${alt}"`,'',`--${alt}`,textPart('text/plain',row.text||''),`--${alt}`,textPart('text/html',restoredHtml),`--${alt}--`].join('\r\n');
+  const restoredHtml=restoreInlineCids(row.content||'',atts);
+  const altBody=[`Content-Type: multipart/alternative; boundary="${alt}"`,'',`--${alt}`,textPart('text/plain',row.text||''),`--${alt}`,textPart('text/html',restoredHtml),`--${alt}--`].join('\r\n');
   const inline=[], regular=[], meta=[], missing=[];
   for(const a of atts){
     const p=await attachmentPart(a); meta.push(p.meta);
