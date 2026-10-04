@@ -19,9 +19,17 @@ function addr(x){if(!x)return'';if(typeof x==='string')return safe(x);return x.n
 function list(v){return parse(v).map(addr).filter(Boolean).join(', ')}
 function fold64(b){return b.toString('base64').match(/.{1,76}/g)?.join('\r\n')||''}
 function encText(s){return fold64(Buffer.from(String(s||''),'utf8'))}
+function encodeHeader(v=''){
+  const s=safe(v);
+  if(!s)return '';
+  return /^[\x20-\x7E]*$/.test(s)?s:`=?UTF-8?B?${Buffer.from(s,'utf8').toString('base64')}?=`;
+}
+function normalizeHtmlCharset(html=''){
+  return String(html).replace(/charset\s*=\s*["']?(?:gb2312|gbk|big5|iso-8859-[0-9]+)/gi,'charset=UTF-8');
+}
 function boundary(label,id){return `=_cloudmail_migration_${label}_${id}_${crypto.randomBytes(6).toString('hex')}`}
 function dateHeader(v){const d=new Date(String(v||'').replace(' ','T')+'Z');return Number.isNaN(d.valueOf())?new Date(0).toUTCString():d.toUTCString()}
-function textPart(type,body){return `Content-Type: ${type}; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n${encText(body)}`}
+function textPart(type,body){const normalized=type==='text/html'?normalizeHtmlCharset(body):body;return `Content-Type: ${type}; charset=UTF-8\\r\\nContent-Transfer-Encoding: base64\\r\\n\\r\\n${encText(normalized)}`}
 async function attachmentPart(a){
   const file=path.join(r2Dir,a.key);
   let data;
