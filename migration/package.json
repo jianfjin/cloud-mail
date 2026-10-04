@@ -1,0 +1,9 @@
+{
+  "name": "cloud-mail-microsoft365-migration",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "export": "node export-mailboxes.mjs",
+    "validate": "node validate-export.mjs"
+  }
+}
