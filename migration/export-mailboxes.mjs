@@ -63,14 +63,17 @@ async function makeMime(row,atts){
   const effectiveMessageId=sourceMessageId||`<cloudmail-${id}@migration.edmf.nl>`;
   const messageIdSource=sourceMessageId?'source':'generated';
   const headers=[`From: ${from}`,to?`To: ${to}`:null,parse(row.cc).length?`Cc: ${list(row.cc)}`:null,`Subject: ${encodeHeader(row.subject||'')}`,`Date: ${dateHeader(row.create_time)}`,`Message-ID: ${effectiveMessageId}`,row.in_reply_to?`In-Reply-To: ${safe(row.in_reply_to)}`:null,row.relation?`References: ${safe(row.relation)}`:null,'MIME-Version: 1.0'].filter(Boolean);
-  const restoredHtml=restoreInlineCids(row.content||'',atts);
-  const altBody=[`Content-Type: multipart/alternative; boundary="${alt}"`,'',`--${alt}`,textPart('text/plain',row.text||''),`--${alt}`,textPart('text/html',restoredHtml),`--${alt}--`].join('\r\n');
-  const inline=[], regular=[], meta=[], missing=[];
+  const inline=[], regular=[], meta=[], missing=[], availableAtts=[];
   for(const a of atts){
     const p=await attachmentPart(a); meta.push(p.meta);
     if(p.missing){missing.push(p.meta);continue}
+    availableAtts.push(a);
     (a.content_id||Number(a.type)===1?inline:regular).push(p.part);
   }
+  // Restore CID URLs only when the referenced R2 object actually exists.
+  // For source-missing inline objects, retain cloud-mail's stored URL and audit it in the manifest.
+  const restoredHtml=restoreInlineCids(row.content||'',availableAtts);
+  const altBody=[`Content-Type: multipart/alternative; boundary="${alt}"`,'',`--${alt}`,textPart('text/plain',row.text||''),`--${alt}`,textPart('text/html',restoredHtml),`--${alt}--`].join('\r\n');
   let body=altBody;
   if(inline.length){body=[`Content-Type: multipart/related; boundary="${related}"`,'',`--${related}`,body,...inline.flatMap(p=>[`--${related}`,p]),`--${related}--`].join('\r\n')}
   if(regular.length){body=[`Content-Type: multipart/mixed; boundary="${mixed}"`,'',`--${mixed}`,body,...regular.flatMap(p=>[`--${mixed}`,p]),`--${mixed}--`].join('\r\n')}
