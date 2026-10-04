@@ -40,7 +40,10 @@ async function makeMime(row,atts){
   const id=Number(row.email_id), alt=boundary('alt',id), mixed=boundary('mixed',id), related=boundary('related',id);
   const from=row.name?`"${q(row.name)}" <${safe(row.send_email||'')}>`:safe(row.send_email||'');
   const to=list(row.recipient)||safe(row.to_email||'');
-  const headers=[`From: ${from}`,to?`To: ${to}`:null,parse(row.cc).length?`Cc: ${list(row.cc)}`:null,`Subject: ${safe(row.subject||'')}`,`Date: ${dateHeader(row.create_time)}`,row.message_id?`Message-ID: ${safe(row.message_id)}`:null,row.in_reply_to?`In-Reply-To: ${safe(row.in_reply_to)}`:null,row.relation?`References: ${safe(row.relation)}`:null,'MIME-Version: 1.0'].filter(Boolean);
+  const sourceMessageId=safe(row.message_id||'');
+  const effectiveMessageId=sourceMessageId||`<cloudmail-${id}@migration.edmf.nl>`;
+  const messageIdSource=sourceMessageId?'source':'generated';
+  const headers=[`From: ${from}`,to?`To: ${to}`:null,parse(row.cc).length?`Cc: ${list(row.cc)}`:null,`Subject: ${encodeHeader(row.subject||'')}`,`Date: ${dateHeader(row.create_time)}`,`Message-ID: ${effectiveMessageId}`,row.in_reply_to?`In-Reply-To: ${safe(row.in_reply_to)}`:null,row.relation?`References: ${safe(row.relation)}`:null,'MIME-Version: 1.0'].filter(Boolean);
   const altBody=[`Content-Type: multipart/alternative; boundary="${alt}"`,'',`--${alt}`,textPart('text/plain',row.text||''),`--${alt}`,textPart('text/html',row.content||''),`--${alt}--`].join('\r\n');
   const inline=[], regular=[], meta=[], missing=[];
   for(const a of atts){
@@ -51,7 +54,7 @@ async function makeMime(row,atts){
   let body=altBody;
   if(inline.length){body=[`Content-Type: multipart/related; boundary="${related}"`,'',`--${related}`,body,...inline.flatMap(p=>[`--${related}`,p]),`--${related}--`].join('\r\n')}
   if(regular.length){body=[`Content-Type: multipart/mixed; boundary="${mixed}"`,'',`--${mixed}`,body,...regular.flatMap(p=>[`--${mixed}`,p]),`--${mixed}--`].join('\r\n')}
-  return {eml:headers.join('\r\n')+'\r\n'+body+'\r\n',attachmentMeta:meta,missingAttachments:missing};
+  return {eml:headers.join('\r\n')+'\r\n'+body+'\r\n',attachmentMeta:meta,missingAttachments:missing,messageId:effectiveMessageId,messageIdSource};
 }
 
 const rows=unwrap(JSON.parse(await fs.readFile(input,'utf8')));
@@ -64,11 +67,11 @@ for(const row of selected){
   const id=Number(row.email_id), mailbox=mailboxFilter || String(row.account_email||'unknown').toLowerCase();
   const folder=Number(row.is_del)===1?'Deleted':Number(row.type)===1?'Sent':'Inbox';
   try{
-    const {eml,attachmentMeta,missingAttachments}=await makeMime(row,byEmail.get(id)||[]);
+    const {eml,attachmentMeta,missingAttachments,messageId,messageIdSource}=await makeMime(row,byEmail.get(id)||[]);
     const dir=path.join(outDir,mailbox,folder);await fs.mkdir(dir,{recursive:true});
     const file=path.join(dir,String(id).padStart(10,'0')+'.eml');await fs.writeFile(file,eml);
     missingAttachmentRefs+=missingAttachments.length;if(missingAttachments.length)messagesWithMissing++;
-    manifest.push({email_id:id,mailbox,folder,message_id:row.message_id||null,cloudmail_create_time:row.create_time||null,migration_date_source:'cloudmail_create_time',source_data_warning:missingAttachments.length?'missing_attachments':null,missing_attachments:missingAttachments,attachments:attachmentMeta,sha256:crypto.createHash('sha256').update(eml).digest('hex')});
+    manifest.push({email_id:id,mailbox,folder,message_id:messageId,message_id_source:messageIdSource,cloudmail_create_time:row.create_time||null,migration_date_source:'cloudmail_create_time',source_data_warning:missingAttachments.length?'missing_attachments':null,missing_attachments:missingAttachments,attachments:attachmentMeta,sha256:crypto.createHash('sha256').update(eml).digest('hex')});
   }catch(e){failed++;console.error(`FAILED email_id=${id}: ${e.message}`)}
 }
 await fs.mkdir(outDir,{recursive:true});
