@@ -42,12 +42,13 @@ function restoreInlineCids(html='',atts=[]){
   // corresponding inline object was never persisted (or is now source-missing).
   // Do not emit dangling cid: references: remove only the broken image src
   // attribute while preserving the rest of the HTML/message for auditability.
-  // Strip dangling cid: references anywhere in HTML attributes. Outlook/Word
-  // commonly duplicates an image in src/v:imagedata/o:href/background attributes,
-  // so limiting cleanup to src= leaves broken CIDs behind.
-  out=out.replace(/\s+([\w:-]+)\s*=\s*(?:(["'])cid:([^"'<>\s]+)\2|cid:([^\s>]+))/gi,(m,attr,q,quoted,bare)=>{
-    const cid=String(quoted||bare||'').replace(/^<|>$/g,'').toLowerCase();
-    return availableCids.has(cid)?m:'';
+  // Remove any remaining dangling cid: token, not just attribute values.
+  // Outlook/Word HTML can carry CID references in CSS (e.g. url(cid:...)) and
+  // other markup contexts. Keep valid CIDs byte-for-byte; replace only source-
+  // missing CID tokens with a harmless marker so the migrated MIME is consistent.
+  out=out.replace(/cid:([^"'<>\s)]+)/gi,(m,cid)=>{
+    const normalized=String(cid).replace(/^<|>$/g,'').toLowerCase();
+    return availableCids.has(normalized)?m:'about:blank';
   });
   return out;
 }
