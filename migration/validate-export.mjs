@@ -42,5 +42,6 @@ if(manifest.messages_with_missing_attachments!==undefined&&manifest.messages_wit
 console.log(`Validated ${manifest.messages.length} messages; errors=${errors}`);
 console.log('Folders:',folders);
 console.log(`Source missing attachment refs=${missingRefs}; affected messages=${affected}`);
-console.log(`Generated Message-IDs=${generatedMessageIds}; legacy HTML charsets=${legacyHtmlCharsets}; literal CRLF escapes=${literalCrlfEscapes}`);\nconsole.log(`CID references=${cidReferences}; matched=${cidMatched}; missing=${cidMissing}; unused inline Content-IDs=${unusedInlineContentIds}`);
+console.log(`Generated Message-IDs=${generatedMessageIds}; legacy HTML charsets=${legacyHtmlCharsets}; literal CRLF escapes=${literalCrlfEscapes}`);
+console.log(`CID references=${cidReferences}; matched=${cidMatched}; missing=${cidMissing}; unused inline Content-IDs=${unusedInlineContentIds}`);
 process.exitCode=errors?1:0;
