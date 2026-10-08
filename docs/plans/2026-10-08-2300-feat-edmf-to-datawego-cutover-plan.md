@@ -20,7 +20,7 @@ Goal: repurpose the single `cloud-mail` deployment (same Cloudflare account `52f
 
 ## Follow-ups (manual / external)
 
-- [x] **Resend** — verified 2026-10-08: user confirms send + receive works as `jianfeng.jin@datawego.nl`.: the reused `re_HsQEw…` key is an account key — confirm `datawego.nl` is a verified sending domain at resend.com (DNS: Resend needs MX/SPF/DKIM records, currently absent; SPF today lists Cloudflare + Brevo). Until verified, external sends by renamed users fail with Resend domain-not-verified. Internal mail is unaffected.
+- [x] **Resend** — verified 2026-10-08: send + receive confirmed as `jianfeng.jin@datawego.nl` (same account API key reused for `datawego.nl`).
 - [ ] Users must sign in again at `https://mail.datawego.nl` with their `@datawego.nl` address (same password). Announce once.
 - [ ] Optional: delete the orphan `mail` DNS record in the `edmf.nl` zone (needs zone DNS access; token here lacked it) — already inert.
 - [ ] Optional: leave a mailto/website pointer at EDMF from `edmf.nl` contacts to the new addresses.
