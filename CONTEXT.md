@@ -23,3 +23,13 @@ glossary only: no implementation details, no specs, no scratch notes.
 - **Permission** — a single grantable capability (for example: view all
   users, delete any email, manage system settings). Permissions are attached
   to roles; users acquire them through their role.
+
+- **Managed email domain** — a DNS domain whose addresses this deployment
+  accepts for mailboxes (login, registration, inbound mail). More than one
+  may be managed at a time; a cutover window is such a case. Addresses
+  outside the managed domains are not valid identities here.
+
+- **Mailbox rename (in place)** — changing an existing mailbox's address from
+  one managed email domain to another while preserving the user row, history,
+  messages, and attachments. Distinct from migration (moving data between
+  systems) and from deletion.

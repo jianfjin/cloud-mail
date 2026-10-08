@@ -333,7 +333,7 @@
     <main id="top">
       <p class="eyebrow">Cloudflare Workers</p>
       <h1>Production Deployment</h1>
-      <p class="lede">Operating procedure for the <code>cloud-mail</code> Worker at <a href="https://mail.edmf.nl">mail.edmf.nl</a>, including the JWT signing secret used by every authenticated session.</p>
+      <p class="lede">Operating procedure for the <code>cloud-mail</code> Worker at <a href="https://mail.datawego.nl">mail.datawego.nl</a>, including the JWT signing secret used by every authenticated session.</p>
 
       <section id="secret">
         <h2>JWT Secret</h2>
@@ -347,7 +347,7 @@
           <div class="label">Cloudflare type</div>
           <div class="value"><code>secret_text</code></div>
           <div class="label">Public host</div>
-          <div class="value"><code>mail.edmf.nl</code></div>
+          <div class="value"><code>mail.datawego.nl</code></div>
         </div>
 
         <ul>
@@ -405,7 +405,7 @@ npx wrangler secret list --config wrangler.production.toml</code></pre>
         <pre><code>npx wrangler deploy --config wrangler.production.toml</code></pre>
 
         <ol start="5">
-          <li>Hard-refresh <a href="https://mail.edmf.nl">mail.edmf.nl</a> and test sign-in.</li>
+          <li>Hard-refresh <a href="https://mail.datawego.nl">mail.datawego.nl</a> and test sign-in.</li>
           <li>For mail-related changes, send a controlled message and confirm the expected mailbox record is created.</li>
         </ol>
 
@@ -424,7 +424,7 @@ npx wrangler secret list --config wrangler.production.toml</code></pre>
           <li>If <code>jwt_secret</code> is absent, create it using the interactive procedure above.</li>
           <li>If the name is present but the error persists, rotate it interactively. A secret binding can exist with an empty value.</li>
           <li>Wait briefly for the published version, hard-refresh the site, and sign in again.</li>
-          <li>Confirm in the Cloudflare dashboard that <code>mail.edmf.nl</code> maps to the <code>cloud-mail</code> production Worker.</li>
+          <li>Confirm in the Cloudflare dashboard that <code>mail.datawego.nl</code> maps to the <code>cloud-mail</code> production Worker.</li>
         </ol>
 
         <p>Cloudflare cannot recover a previously uploaded secret value. If the value was not saved when it was created, rotate it and store the replacement in the password manager.</p>

@@ -33,8 +33,8 @@ crons = ["0 * * * *"]
 
 [vars]
 orm_log = false
-domain = ["edmf.nl"]
-admin = "admin@edmf.nl"			#管理员的邮箱	示例: admin@example.com
+domain = ["datawego.nl"]
+admin = "admin@datawego.nl"			#管理员的邮箱	示例: admin@example.com
 ai_model = "@cf/meta/llama-3.1-8b-instruct-fast"
 analysis_cache = false
 

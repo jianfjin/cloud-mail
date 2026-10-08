@@ -1,7 +1,7 @@
 # Cloudflare Production Deployment
 
 This runbook applies to the production Cloudflare Worker named `cloud-mail`,
-served at `https://mail.edmf.nl`.
+served at `https://mail.datawego.nl`.
 
 Run all commands from `mail-worker` unless stated otherwise:
 
@@ -89,7 +89,7 @@ again.
    npx wrangler deploy --config wrangler.production.toml
    ```
 
-5. Reload `https://mail.edmf.nl` and test sign-in. For mail changes, also send
+5. Reload `https://mail.datawego.nl` and test sign-in. For mail changes, also send
    a controlled message and confirm the expected mailbox record is created.
 
 Before accepting any Wrangler configuration-difference prompt, verify that the
@@ -114,7 +114,7 @@ Imported HMAC key length (0) must be a non-zero value
 4. Wait briefly for the newly published version, hard-refresh the site, and
    sign in again.
 5. If the error persists, confirm in the Cloudflare dashboard that
-   `mail.edmf.nl` is mapped to the `cloud-mail` production Worker, rather than
+   `mail.datawego.nl` is mapped to the `cloud-mail` production Worker, rather than
    another Worker or environment.
 
 Never attempt to recover a previously uploaded secret from Cloudflare. It is
